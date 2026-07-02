@@ -30,7 +30,7 @@ CONF_POLL_INTERVAL = "poll_interval"
 CONF_INCLUDE_FOLLOWED = "include_followed"
 CONF_FIRE_VALUE_EVENTS = "fire_value_events"
 
-DEFAULT_BASE_URL = "https://hydronode.com"
+DEFAULT_BASE_URL = "https://hydronode.texhfexlabs.de"
 DEFAULT_POLL_INTERVAL = 60  # seconds, per HOMEASSISTANT_INTEGRATION.md
 MIN_POLL_INTERVAL = 15
 DEFAULT_INCLUDE_FOLLOWED = True

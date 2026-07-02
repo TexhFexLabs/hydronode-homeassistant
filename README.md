@@ -4,7 +4,7 @@
 
 # HydroNode for Home Assistant
 
-Home Assistant integration for [HydroNode](https://hydronode.com) — auto-discovered sensor
+Home Assistant integration for [HydroNode](https://hydronode.texhfexlabs.de) — auto-discovered sensor
 entities for every sensor you own, that's shared with you, or that you follow, live values
 pushed over WebSocket, and anomaly / AI-analysis events on the Home Assistant event bus.
 
@@ -45,7 +45,7 @@ regular account password. Tokens are created from an active HydroNode web/app se
 from another PAT, so a leaked token can't mint further tokens):
 
 ```bash
-curl -X POST https://hydronode.com/api/user/api-tokens \
+curl -X POST https://hydronode.texhfexlabs.de/api/user/api-tokens \
   -H "Authorization: Bearer <your JWT session token>" \
   -H "Content-Type: application/json" \
   -d '{"name":"Home Assistant"}'
@@ -66,7 +66,7 @@ be retrieved again (only revoked and replaced):
 If you ever need to revoke it (e.g. after removing the integration), use:
 
 ```bash
-curl -X DELETE https://hydronode.com/api/user/api-tokens/{id} \
+curl -X DELETE https://hydronode.texhfexlabs.de/api/user/api-tokens/{id} \
   -H "Authorization: Bearer <your JWT session token or a PAT>"
 ```
 
@@ -76,7 +76,7 @@ curl -X DELETE https://hydronode.com/api/user/api-tokens/{id} \
 
 1. In Home Assistant, go to **Settings → Devices & Services → Add Integration** and search for
    **HydroNode**.
-2. Enter your **Base URL** (default `https://hydronode.com`) and the **Personal Access Token**
+2. Enter your **Base URL** (default `https://hydronode.texhfexlabs.de`) and the **Personal Access Token**
    you created above.
 3. The integration validates the token against `GET /api/ha/v1/bootstrap` and, on success,
    creates one device per station (including a pseudo-device for sensors without a station) and
