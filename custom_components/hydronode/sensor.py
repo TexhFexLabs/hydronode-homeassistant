@@ -93,12 +93,11 @@ class HydroNodeSensorEntity(CoordinatorEntity[HydroNodeCoordinator], SensorEntit
 
         self._attr_unique_id = f"{self._sensor_id}_{self._type}_{self._channel or ''}"
 
-        sensor_name = sensor.get("name") or self._type
-        self._attr_name = (
-            f"{sensor_name} {self._type} {self._channel}"
-            if self._channel
-            else f"{sensor_name} {self._type}"
-        )
+        # Entity name is just the measurement title (channel name if configured,
+        # otherwise the prettified type). The station device name provides context,
+        # so "HydroNodeStation01 Battery_Voltage" instead of
+        # "HydroNodeStation01 BATTERY_VOLTAGE Battery_Voltage".
+        self._attr_name = self._channel or self._type.replace("_", " ").title()
 
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, station["id"])},

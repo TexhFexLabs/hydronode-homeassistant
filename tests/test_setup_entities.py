@@ -96,6 +96,8 @@ async def test_setup_entry_creates_device_and_entities(hass, aioclient_mock):
     assert temp_state.state == "21.5"
     assert temp_state.attributes.get("device_class") == "temperature"
     assert temp_state.attributes.get("unit_of_measurement") == "°C"
+    # Entity name is only the measurement title; the device supplies the station prefix.
+    assert temp_state.attributes.get("friendly_name") == "Gewaechshaus Water Temperature"
 
     ph_state = hass.states.get(ph_entity_id)
     assert ph_state.attributes.get("device_class") == "ph"

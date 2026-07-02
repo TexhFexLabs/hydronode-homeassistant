@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="brands/hydronode/logo@2x.png" width="128" alt="HydroNode logo">
+</p>
+
 # HydroNode for Home Assistant
 
 Home Assistant integration for [HydroNode](https://hydronode.com) — auto-discovered sensor
@@ -109,6 +113,21 @@ re-add the integration.
 
 An entity becomes `unavailable` when its sensor is inactive on HydroNode, or when its last known
 value is older than roughly 2× the poll interval.
+
+Entity names are just the measurement title (the LoRaWAN channel name if configured, otherwise
+the prettified type, e.g. `Battery_Voltage` or `Water Temperature`). The station device supplies
+the prefix, so the full friendly name reads `<Station> <Title>`. Measurement types that have not
+sent a value for 30 days are no longer discovered.
+
+---
+
+## Branding (logo in Home Assistant)
+
+Home Assistant loads integration logos from [home-assistant/brands](https://github.com/home-assistant/brands),
+not from the integration itself. The ready-made assets live in [`brands/hydronode/`](brands/hydronode/)
+(`icon.png` 256×256, `icon@2x.png` 512×512). To get the logo displayed, open a PR against
+`home-assistant/brands` adding these files under `custom_integrations/hydronode/`. Until that PR
+is merged, Home Assistant shows a generic placeholder icon.
 
 ---
 
