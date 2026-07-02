@@ -61,9 +61,11 @@ EVENT_AI_ANALYSIS = "hydronode_ai_analysis"
 EVENT_VALUE_UPDATED = "hydronode_value_updated"
 
 # --- Availability ---------------------------------------------------------------
-# A value older than (poll_interval * multiplier + buffer) marks the entity unavailable.
-STALE_AFTER_POLL_MULTIPLIER = 2
-STALE_BUFFER_SECONDS = 60
+# A value older than this marks the entity unavailable. Generous on purpose:
+# some channels (e.g. particulate matter) are only included in every Nth uplink,
+# so a tight poll-based window would flap between value and "unavailable" and
+# punch gaps into history graphs.
+STALE_TIMEOUT_SECONDS = 2 * 60 * 60
 
 # --- Sensor type mapping ---------------------------------------------------------
 # type -> (device_class, native_unit_of_measurement, state_class)

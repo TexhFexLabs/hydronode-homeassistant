@@ -21,8 +21,7 @@ from .const import (
     GENERIC_SENSOR_TYPE,
     MANUFACTURER,
     SENSOR_TYPE_MAP,
-    STALE_AFTER_POLL_MULTIPLIER,
-    STALE_BUFFER_SECONDS,
+    STALE_TIMEOUT_SECONDS,
 )
 from .coordinator import HydroNodeCoordinator, StateKey
 
@@ -137,9 +136,5 @@ class HydroNodeSensorEntity(CoordinatorEntity[HydroNodeCoordinator], SensorEntit
         if value_time is None:
             return False
 
-        poll_interval = self.coordinator.update_interval or timedelta(seconds=60)
-        max_age = timedelta(
-            seconds=poll_interval.total_seconds() * STALE_AFTER_POLL_MULTIPLIER
-            + STALE_BUFFER_SECONDS
-        )
+        max_age = timedelta(seconds=STALE_TIMEOUT_SECONDS)
         return dt_util.utcnow() - dt_util.as_utc(value_time) <= max_age

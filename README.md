@@ -112,7 +112,9 @@ re-add the integration.
   directly in automation triggers via `trigger.event.data`.
 
 An entity becomes `unavailable` when its sensor is inactive on HydroNode, or when its last known
-value is older than roughly 2× the poll interval.
+value is older than **2 hours**. The window is deliberately generous: channels that are only
+included in every Nth uplink (e.g. particulate matter) keep showing their last value instead of
+flapping to `unavailable`, and history graphs stay connected.
 
 Entity names are just the measurement title (the LoRaWAN channel name if configured, otherwise
 the prettified type, e.g. `Battery_Voltage` or `Water Temperature`). The station device supplies
