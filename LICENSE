@@ -1,0 +1,21 @@
+Proprietary License
+
+Copyright (c) 2026 TexhFex Labs. All rights reserved.
+
+This software and associated documentation files (the "Software") are the
+proprietary property of TexhFex Labs. No part of the Software may be
+copied, modified, merged, published, distributed, sublicensed, or sold
+without the prior written permission of TexhFex Labs.
+
+The Software is provided for use exclusively with HydroNode accounts and
+services operated by TexhFex Labs. Installation and use of the compiled
+Home Assistant custom component by end users of HydroNode is permitted;
+redistribution of modified versions or use outside of the HydroNode
+service is not permitted without prior written consent.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+TEXHFEX LABS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
