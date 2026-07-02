@@ -1,0 +1,42 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Mit HydroNode verbinden",
+        "description": "Gib deine HydroNode-Basis-URL und ein Personal Access Token ein. Ein Token erstellst du in der HydroNode-App oder im Web unter Konto → API-Tokens.",
+        "data": {
+          "base_url": "Basis-URL",
+          "token": "Personal Access Token"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Erneut mit HydroNode verbinden",
+        "description": "Dein HydroNode-Token ist nicht mehr gültig. Gib ein neues Token ein, um die Verbindung wiederherzustellen.",
+        "data": {
+          "token": "Personal Access Token"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Ungültiges oder widerrufenes Token.",
+      "cannot_connect": "HydroNode-Server nicht erreichbar.",
+      "unknown": "Unerwarteter Fehler."
+    },
+    "abort": {
+      "already_configured": "Dieses HydroNode-Konto ist bereits eingerichtet.",
+      "reauth_successful": "Erneut erfolgreich mit HydroNode verbunden."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "HydroNode-Optionen",
+        "data": {
+          "poll_interval": "Abfrageintervall (Sekunden)",
+          "include_followed": "Gefolgte öffentliche Stationen einbeziehen",
+          "fire_value_events": "Bei jeder Messwert-Aktualisierung ein Event auslösen"
+        }
+      }
+    }
+  }
+}

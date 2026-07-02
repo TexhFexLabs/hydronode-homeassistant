@@ -1,0 +1,42 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to HydroNode",
+        "description": "Enter your HydroNode base URL and a Personal Access Token. Create a token in the HydroNode app or web UI under Account → API Tokens.",
+        "data": {
+          "base_url": "Base URL",
+          "token": "Personal Access Token"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Reconnect to HydroNode",
+        "description": "Your HydroNode Personal Access Token is no longer valid. Enter a new one to reconnect.",
+        "data": {
+          "token": "Personal Access Token"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Invalid or revoked token.",
+      "cannot_connect": "Could not reach the HydroNode server.",
+      "unknown": "Unexpected error."
+    },
+    "abort": {
+      "already_configured": "This HydroNode account is already configured.",
+      "reauth_successful": "Reconnected to HydroNode successfully."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "HydroNode options",
+        "data": {
+          "poll_interval": "Poll interval (seconds)",
+          "include_followed": "Include followed public stations",
+          "fire_value_events": "Fire an event bus event on every value update"
+        }
+      }
+    }
+  }
+}
