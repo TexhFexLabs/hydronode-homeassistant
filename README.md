@@ -54,31 +54,6 @@ Tokens can be revoked any time from the same **Profile → API Tokens** page, e.
 removing the integration. Tokens are only created from an active web/app session (never from
 another PAT), so a leaked token can't mint further tokens.
 
-<details>
-<summary>Creating a token via the API instead</summary>
-
-```bash
-curl -X POST https://hydronode.texhfexlabs.de/api/user/api-tokens \
-  -H "Authorization: Bearer <your JWT session token>" \
-  -H "Content-Type: application/json" \
-  -d '{"name":"Home Assistant"}'
-```
-
-The response contains the token exactly once:
-
-```json
-{
-  "id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
-  "name": "Home Assistant",
-  "token": "hat_abcdefghij1234567890abcdefghij1234",
-  "createdAt": "2026-07-01T10:15:00Z"
-}
-```
-
-Revoking is only possible on the website (**Profile → API Tokens**).
-
-</details>
-
 ---
 
 ## Configuration
