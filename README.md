@@ -41,8 +41,21 @@ pushed over WebSocket, and anomaly / AI-analysis events on the Home Assistant ev
 ## Creating a Personal Access Token
 
 The integration authenticates with a HydroNode **Personal Access Token** (`hat_…`), not your
-regular account password. Tokens are created from an active HydroNode web/app session (never
-from another PAT, so a leaked token can't mint further tokens):
+regular account password. You create one in the HydroNode web app:
+
+1. Open [hydronode.texhfexlabs.de](https://hydronode.texhfexlabs.de) and **sign in** (or create
+   an account first).
+2. Click your avatar in the **top right** and open **Profile**.
+3. Scroll to the **API Tokens** section and create a new token (name it e.g. "Home Assistant").
+4. **Copy the token immediately** — it is shown exactly once and cannot be retrieved again
+   (only revoked and replaced). Paste it into the integration setup below.
+
+Tokens can be revoked any time from the same **Profile → API Tokens** page, e.g. after
+removing the integration. Tokens are only created from an active web/app session (never from
+another PAT), so a leaked token can't mint further tokens.
+
+<details>
+<summary>Creating a token via the API instead</summary>
 
 ```bash
 curl -X POST https://hydronode.texhfexlabs.de/api/user/api-tokens \
@@ -51,8 +64,7 @@ curl -X POST https://hydronode.texhfexlabs.de/api/user/api-tokens \
   -d '{"name":"Home Assistant"}'
 ```
 
-The response contains the token exactly once — copy it before closing the response, it cannot
-be retrieved again (only revoked and replaced):
+The response contains the token exactly once:
 
 ```json
 {
@@ -63,12 +75,14 @@ be retrieved again (only revoked and replaced):
 }
 ```
 
-If you ever need to revoke it (e.g. after removing the integration), use:
+Revoke with:
 
 ```bash
 curl -X DELETE https://hydronode.texhfexlabs.de/api/user/api-tokens/{id} \
   -H "Authorization: Bearer <your JWT session token or a PAT>"
 ```
+
+</details>
 
 ---
 
