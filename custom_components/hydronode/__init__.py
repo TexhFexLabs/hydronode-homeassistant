@@ -11,6 +11,7 @@ from homeassistant.const import CONF_TOKEN, Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import HydroNodeApiClient, HydroNodeApiError, HydroNodeAuthError
@@ -27,7 +28,7 @@ from .const import (
     EVENT_VALUE_UPDATED,
     MANUFACTURER,
 )
-from .coordinator import HydroNodeCoordinator
+from .coordinator import HydroNodeCoordinator, build_unique_id
 from .ws import HydroNodeWebSocketClient
 
 _LOGGER = logging.getLogger(__name__)
@@ -70,9 +71,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: HydroNodeConfigEntry) ->
 
     await coordinator.async_config_entry_first_refresh()
 
-    _async_register_devices(hass, entry, coordinator.bootstrap)
+    _async_sync_registries(hass, entry, coordinator.bootstrap)
     coordinator.add_new_entity_listener(
-        lambda bootstrap: _async_register_devices(hass, entry, bootstrap)
+        lambda bootstrap: _async_sync_registries(hass, entry, bootstrap)
     )
 
     runtime_data = HydroNodeData(client=client, coordinator=coordinator)
@@ -123,19 +124,71 @@ async def async_setup_entry(hass: HomeAssistant, entry: HydroNodeConfigEntry) ->
     return True
 
 
-def _async_register_devices(
+def _async_sync_registries(
     hass: HomeAssistant, entry: HydroNodeConfigEntry, bootstrap: dict[str, Any]
 ) -> None:
-    """Create/update one HA device per station (including pseudo-stations)."""
+    """Mirror the bootstrap into the HA registries.
+
+    Creates/updates one device per station (including pseudo-stations) and removes
+    devices and entities whose station/sensor/channel dropped out of the bootstrap
+    (unfollowed public station, revoked share, renamed channel, 30-day inactivity).
+    """
     device_registry = dr.async_get(hass)
+    entity_registry = er.async_get(hass)
     include_followed = entry.options.get(CONF_INCLUDE_FOLLOWED, DEFAULT_INCLUDE_FOLLOWED)
+
+    valid_station_ids: set[str] = set()
+    valid_unique_ids: set[str] = set()
     for station in HydroNodeCoordinator.filter_stations(bootstrap, include_followed):
+        station_id = station["id"]
+        valid_station_ids.add(station_id)
+        valid_unique_ids.add(f"{station_id}_events")
+        for sensor in station.get("sensors", []):
+            for type_info in sensor.get("types", []):
+                valid_unique_ids.add(
+                    build_unique_id(
+                        sensor["id"], type_info["type"], type_info.get("channelName")
+                    )
+                )
         device_registry.async_get_or_create(
             config_entry_id=entry.entry_id,
-            identifiers={(DOMAIN, station["id"])},
+            identifiers={(DOMAIN, station_id)},
             name=station.get("name") or "HydroNode Station",
             manufacturer=MANUFACTURER,
         )
+
+    for entity_entry in er.async_entries_for_config_entry(
+        entity_registry, entry.entry_id
+    ):
+        if entity_entry.unique_id not in valid_unique_ids:
+            _LOGGER.debug("Removing stale entity %s", entity_entry.entity_id)
+            entity_registry.async_remove(entity_entry.entity_id)
+
+    for device in dr.async_entries_for_config_entry(device_registry, entry.entry_id):
+        if not any(
+            domain == DOMAIN and identifier in valid_station_ids
+            for domain, identifier in device.identifiers
+        ):
+            _LOGGER.debug("Removing stale device %s", device.name)
+            device_registry.async_update_device(
+                device.id, remove_config_entry_id=entry.entry_id
+            )
+
+
+async def async_remove_config_entry_device(
+    hass: HomeAssistant, entry: HydroNodeConfigEntry, device: dr.DeviceEntry
+) -> bool:
+    """Allow manual device deletion for stations no longer in the bootstrap."""
+    bootstrap = entry.runtime_data.coordinator.bootstrap if entry.runtime_data else {}
+    current_ids = {
+        station["id"]
+        for station in bootstrap.get("stations", [])
+        if isinstance(station, dict)
+    }
+    return not any(
+        domain == DOMAIN and identifier in current_ids
+        for domain, identifier in device.identifiers
+    )
 
 
 async def _trigger_reauth(hass: HomeAssistant, entry: HydroNodeConfigEntry) -> None:

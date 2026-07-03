@@ -26,7 +26,7 @@ async def async_setup_entry(
     """Set up one HydroNode event entity per station and wire up dynamic discovery."""
     runtime_data = entry.runtime_data
     coordinator = runtime_data.coordinator
-    known_stations: set[str] = set()
+    known_entities: dict[str, HydroNodeEventEntity] = {}
 
     @callback
     def _add_from_bootstrap(bootstrap: dict[str, Any]) -> None:
@@ -34,14 +34,22 @@ async def async_setup_entry(
             CONF_INCLUDE_FOLLOWED, DEFAULT_INCLUDE_FOLLOWED
         )
         new_entities: list[HydroNodeEventEntity] = []
+        current_ids: set[str] = set()
         for station in coordinator.filter_stations(bootstrap, include_followed):
             station_id = station["id"]
-            if station_id in known_stations:
+            current_ids.add(station_id)
+            if station_id in known_entities:
                 continue
-            known_stations.add(station_id)
             entity = HydroNodeEventEntity(station)
+            known_entities[station_id] = entity
             runtime_data.event_listeners.append(entity.handle_event)
             new_entities.append(entity)
+        # Stations gone from the bootstrap (unfollow, revoked share): stop feeding
+        # their entities; the registry entries are removed by _async_sync_registries.
+        for station_id in set(known_entities) - current_ids:
+            entity = known_entities.pop(station_id)
+            if entity.handle_event in runtime_data.event_listeners:
+                runtime_data.event_listeners.remove(entity.handle_event)
         if new_entities:
             async_add_entities(new_entities)
 

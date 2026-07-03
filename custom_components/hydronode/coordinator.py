@@ -22,6 +22,11 @@ StateKey = tuple[str, str, str | None]
 NewEntityListener = Callable[[dict[str, Any]], None]
 
 
+def build_unique_id(sensor_id: str, type_: str, channel: str | None) -> str:
+    """Unique-id format shared by the sensor platform and the registry cleanup."""
+    return f"{sensor_id}_{type_}_{channel or ''}"
+
+
 class HydroNodeCoordinator(DataUpdateCoordinator[dict[StateKey, dict[str, Any]]]):
     """Polls `/api/ha/v1/states` and periodically refreshes the bootstrap discovery data."""
 

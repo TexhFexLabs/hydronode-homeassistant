@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+import math
+from collections import Counter
 from datetime import timedelta
 from typing import Any
 
@@ -17,13 +19,15 @@ from . import HydroNodeConfigEntry
 from .const import (
     CONF_INCLUDE_FOLLOWED,
     DEFAULT_INCLUDE_FOLLOWED,
+    DEFAULT_SCALE,
     DOMAIN,
     GENERIC_SENSOR_TYPE,
     MANUFACTURER,
     SENSOR_TYPE_MAP,
+    SENSOR_TYPE_NAMES,
     STALE_TIMEOUT_SECONDS,
 )
-from .coordinator import HydroNodeCoordinator, StateKey
+from .coordinator import HydroNodeCoordinator, StateKey, build_unique_id
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -43,20 +47,37 @@ async def async_setup_entry(
             CONF_INCLUDE_FOLLOWED, DEFAULT_INCLUDE_FOLLOWED
         )
         new_entities: list[HydroNodeSensorEntity] = []
+        current_keys: set[StateKey] = set()
         for station in coordinator.filter_stations(bootstrap, include_followed):
             for sensor in station.get("sensors", []):
+                # Two channels of the same type on one sensor would collide on the
+                # pretty type name, so only then the channel name disambiguates.
+                type_counts = Counter(
+                    type_info["type"] for type_info in sensor.get("types", [])
+                )
                 for type_info in sensor.get("types", []):
                     key: StateKey = (
                         sensor["id"],
                         type_info["type"],
                         type_info.get("channelName"),
                     )
+                    current_keys.add(key)
                     if key in known_keys:
                         continue
                     known_keys.add(key)
                     new_entities.append(
-                        HydroNodeSensorEntity(coordinator, station, sensor, type_info)
+                        HydroNodeSensorEntity(
+                            coordinator,
+                            station,
+                            sensor,
+                            type_info,
+                            disambiguate=type_counts[type_info["type"]] > 1,
+                        )
                     )
+        # Forget keys that dropped out of the bootstrap (unfollow, revoked share,
+        # renamed channel) so a later re-follow re-creates the entity. The stale
+        # entity itself is removed from the registry by _async_sync_registries.
+        known_keys.intersection_update(current_keys)
         if new_entities:
             async_add_entities(new_entities)
 
@@ -75,6 +96,7 @@ class HydroNodeSensorEntity(CoordinatorEntity[HydroNodeCoordinator], SensorEntit
         station: dict[str, Any],
         sensor: dict[str, Any],
         type_info: dict[str, Any],
+        disambiguate: bool = False,
     ) -> None:
         super().__init__(coordinator)
         self._sensor_id: str = sensor["id"]
@@ -90,13 +112,29 @@ class HydroNodeSensorEntity(CoordinatorEntity[HydroNodeCoordinator], SensorEntit
         self._attr_native_unit_of_measurement = unit
         self._attr_state_class = state_class
 
-        self._attr_unique_id = f"{self._sensor_id}_{self._type}_{self._channel or ''}"
+        self._attr_unique_id = build_unique_id(self._sensor_id, self._type, self._channel)
 
-        # Entity name is just the measurement title (channel name if configured,
-        # otherwise the prettified type). The station device name provides context,
-        # so "HydroNodeStation01 Battery_Voltage" instead of
-        # "HydroNodeStation01 BATTERY_VOLTAGE Battery_Voltage".
-        self._attr_name = self._channel or self._type.replace("_", " ").title()
+        # Entity name mirrors the webapp: pretty display name per type
+        # ("Particle Count >0.5µm" instead of "nc_0_5"). The channel name is only
+        # appended when one sensor reports the same type on several channels.
+        display_name = SENSOR_TYPE_NAMES.get(
+            self._type, self._type.replace("_", " ").title()
+        )
+        if disambiguate and self._channel:
+            display_name = f"{display_name} ({self._channel})"
+        self._attr_name = display_name
+
+        # fPort channel scale drives the displayed decimals (history keeps the raw
+        # value); a channel without fPort config falls back to 0.01 → 2 decimals.
+        scale = type_info.get("scale")
+        if not scale or scale <= 0:
+            scale = DEFAULT_SCALE
+        self._attr_suggested_display_precision = (
+            0 if scale >= 1 else min(6, math.ceil(-math.log10(scale) - 1e-9))
+        )
+
+        if self._channel:
+            self._attr_extra_state_attributes = {"channel_name": self._channel}
 
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, station["id"])},

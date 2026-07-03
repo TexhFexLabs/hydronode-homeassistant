@@ -107,3 +107,97 @@ async def test_setup_entry_creates_device_and_entities(hass, aioclient_mock):
     await hass.async_block_till_done()
 
     assert entry.state.value == "not_loaded"
+
+
+FOLLOWED_STATION = {
+    "id": "st2",
+    "name": "Wetterstation",
+    "role": "FOLLOWED",
+    "isPublic": True,
+    "sensors": [
+        {
+            "id": "sensor2",
+            "name": "Aussensensor",
+            "active": True,
+            "types": [
+                {"type": "NC_0_5", "channelName": "nc_0_5", "scale": 0.1},
+                {"type": "TEMPERATURE", "channelName": None},
+            ],
+        }
+    ],
+}
+
+
+async def test_unfollowed_station_is_removed_on_bootstrap_refresh(
+    hass, aioclient_mock
+):
+    """A station that drops out of the bootstrap loses its device and entities."""
+    now = dt_util.utcnow().isoformat()
+    two_stations = {
+        "user": BOOTSTRAP["user"],
+        "stations": BOOTSTRAP["stations"] + [FOLLOWED_STATION],
+    }
+    states = [
+        {
+            "sensorId": "sensor2",
+            "type": "NC_0_5",
+            "channelName": "nc_0_5",
+            "value": 2.20000004768372,
+            "timestamp": now,
+        }
+    ]
+    aioclient_mock.get(f"{BASE_URL}/api/ha/v1/bootstrap", json=two_stations)
+    aioclient_mock.get(f"{BASE_URL}/api/ha/v1/states", json=states)
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="u1",
+        data={CONF_BASE_URL: BASE_URL, CONF_TOKEN: TOKEN},
+    )
+    entry.add_to_hass(hass)
+
+    with patch("custom_components.hydronode.ws.HydroNodeWebSocketClient.start"):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    device_registry = dr.async_get(hass)
+    entity_registry = er.async_get(hass)
+
+    assert device_registry.async_get_device(identifiers={(DOMAIN, "st2")}) is not None
+    nc_entity_id = entity_registry.async_get_entity_id(
+        "sensor", DOMAIN, "sensor2_NC_0_5_nc_0_5"
+    )
+    assert nc_entity_id is not None
+
+    # Friendly name comes from the type display-name map, not the raw channelName.
+    nc_state = hass.states.get(nc_entity_id)
+    assert nc_state.attributes.get("friendly_name") == (
+        "Wetterstation Particle Count >0.5µm"
+    )
+    # fPort scale 0.1 → one displayed decimal, stored in the registry options.
+    nc_options = entity_registry.async_get(nc_entity_id).options.get("sensor", {})
+    assert nc_options.get("suggested_display_precision") == 1
+
+    # Unfollow: next bootstrap only contains st1.
+    aioclient_mock.clear_requests()
+    aioclient_mock.get(f"{BASE_URL}/api/ha/v1/bootstrap", json=BOOTSTRAP)
+    aioclient_mock.get(f"{BASE_URL}/api/ha/v1/states", json=[])
+
+    coordinator = entry.runtime_data.coordinator
+    await coordinator.async_refresh_bootstrap()
+    await hass.async_block_till_done()
+
+    assert device_registry.async_get_device(identifiers={(DOMAIN, "st2")}) is None
+    assert (
+        entity_registry.async_get_entity_id("sensor", DOMAIN, "sensor2_NC_0_5_nc_0_5")
+        is None
+    )
+    assert entity_registry.async_get_entity_id("event", DOMAIN, "st2_events") is None
+    # The owned station survives untouched.
+    assert device_registry.async_get_device(identifiers={(DOMAIN, "st1")}) is not None
+    assert (
+        entity_registry.async_get_entity_id(
+            "sensor", DOMAIN, "sensor1_WATER_TEMPERATURE_"
+        )
+        is not None
+    )

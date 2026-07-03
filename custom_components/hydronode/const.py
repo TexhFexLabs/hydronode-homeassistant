@@ -39,7 +39,7 @@ DEFAULT_FIRE_VALUE_EVENTS = False
 # --- REST paths ----------------------------------------------------------------
 BOOTSTRAP_PATH = "/api/ha/v1/bootstrap"
 STATES_PATH = "/api/ha/v1/states"
-BOOTSTRAP_REFRESH_INTERVAL = 15 * 60  # seconds — auto-discovery per design doc §6
+BOOTSTRAP_REFRESH_INTERVAL = 5 * 60  # seconds — auto-discovery per design doc §6
 
 # --- WebSocket -----------------------------------------------------------------
 WS_PATH = "/ws/ha/v1"
@@ -254,3 +254,139 @@ SENSOR_TYPE_MAP: dict[
 GENERIC_SENSOR_TYPE: tuple[
     SensorDeviceClass | None, str | None, SensorStateClass | None
 ] = (None, None, SensorStateClass.MEASUREMENT)
+
+# --- Display precision -----------------------------------------------------------
+# Backend delivers the LoRa fPort channel scale per (sensor, type, channel); when a
+# channel has no fPort config the display default is 0.01 → 2 decimal places.
+DEFAULT_SCALE = 0.01
+
+# --- Friendly display names ------------------------------------------------------
+# type -> human-readable entity name. Mirror of the webapp's SENSOR_TYPE_META
+# (hydronode-web src/app/core/models/sensor-type.model.ts) so entities read
+# "Particle Count >0.5µm" instead of "Nc_0_5". Unknown types fall back to
+# Title-Case of the raw type name.
+SENSOR_TYPE_NAMES: dict[str, str] = {
+    # Core climate
+    "TEMPERATURE": "Temperature",
+    "TEMPERATURE2": "Temperature 2",
+    "TEMPERATURE3": "Temperature 3",
+    "HUMIDITY": "Humidity",
+    "HUMIDITY2": "Humidity 2",
+    "HUMIDITY3": "Humidity 3",
+    "PRESSURE": "Air Pressure",
+    "DEW_POINT": "Dew Point",
+    "HEAT_INDEX": "Heat Index",
+    "ABS_HUMIDITY": "Absolute Humidity",
+    # Gas / air quality
+    "CO2": "CO₂",
+    "CO": "CO",
+    "O2": "O₂",
+    "VOC": "VOC",
+    "O3": "Ozone (O₃)",
+    "SO2": "SO₂",
+    "NO2": "NO₂",
+    "NO": "NO",
+    "NH3": "Ammonia (NH₃)",
+    "H2S": "Hydrogen Sulfide",
+    "CH4": "Methane (CH₄)",
+    "LPG": "LPG",
+    "HCHO": "Formaldehyde",
+    "RADON": "Radon",
+    "IAQ": "IAQ Index",
+    "AQI": "AQI",
+    # Particulate matter — mass concentration
+    "PM25": "PM2.5",
+    "PM10": "PM10",
+    "PM1_0": "PM1.0",
+    "PM2_5": "PM2.5",
+    "PM4_0": "PM4.0",
+    "PM10_0": "PM10.0",
+    # Particulate matter — number concentration
+    "NC_0_5": "Particle Count >0.5µm",
+    "NC_1_0": "Particle Count >1.0µm",
+    "NC_2_5": "Particle Count >2.5µm",
+    "NC_4_0": "Particle Count >4.0µm",
+    "NC_10_0": "Particle Count >10µm",
+    "TYP_SIZE": "Typical Particle Size",
+    # Light & radiation
+    "LIGHT": "Light",
+    "UV_INDEX": "UV Index",
+    "UV_A": "UV-A",
+    "UV_B": "UV-B",
+    "SOLAR_RADIATION": "Solar Radiation",
+    "PAR": "PAR",
+    # Weather
+    "WIND_SPEED": "Wind Speed",
+    "WIND_GUST": "Wind Gust",
+    "WIND_DIRECTION": "Wind Direction",
+    "RAINFALL": "Rainfall",
+    "RAINFALL_RATE": "Rainfall Rate",
+    "SNOW_DEPTH": "Snow Depth",
+    "LEAF_WETNESS": "Leaf Wetness",
+    "EVAPOTRANSPIRATION": "Evapotranspiration",
+    "CLOUD_COVER": "Cloud Cover",
+    "VISIBILITY": "Visibility",
+    # Water
+    "WATER_TEMPERATURE": "Water Temperature",
+    "WATER_PH": "Water pH",
+    "WATER_EC": "Water EC",
+    "WATER_DISSOLVED_OXYGEN": "Dissolved Oxygen",
+    "WATER_TURBIDITY": "Water Turbidity",
+    "WATER_LEVEL": "Water Level",
+    "WATER_ORP": "Water ORP",
+    "WATER_SALINITY": "Water Salinity",
+    "WATER_FLOW_RATE": "Water Flow Rate",
+    "WATER_PRESSURE": "Water Pressure",
+    "WATER_NITRATE": "Water Nitrate",
+    "WATER_AMMONIA": "Water Ammonia",
+    "TANK_LEVEL": "Tank Level",
+    # Soil
+    "SOIL_MOISTURE": "Soil Moisture",
+    "SOIL_TEMPERATURE": "Soil Temperature",
+    "SOIL_PH": "Soil pH",
+    "SOIL_EC": "Soil EC",
+    "SOIL_NITROGEN": "Soil Nitrogen",
+    "SOIL_PHOSPHORUS": "Soil Phosphorus",
+    "SOIL_POTASSIUM": "Soil Potassium",
+    "SOIL_SALINITY": "Soil Salinity",
+    "SOIL_CO2": "Soil CO₂",
+    # Energy / electrical
+    "VOLTAGE": "Voltage",
+    "CURRENT": "Current",
+    "POWER": "Power",
+    "ENERGY": "Energy",
+    "POWER_FACTOR": "Power Factor",
+    "FREQUENCY": "Frequency",
+    "APPARENT_POWER": "Apparent Power",
+    "REACTIVE_POWER": "Reactive Power",
+    "SOLAR_VOLTAGE": "Solar Voltage",
+    "SOLAR_CURRENT": "Solar Current",
+    "SOLAR_POWER": "Solar Power",
+    "BATTERY_VOLTAGE": "Battery Voltage",
+    "BATTERY_PERCENTAGE": "Battery",
+    "BATTERY_CURRENT": "Battery Current",
+    "BATTERY_TEMPERATURE": "Battery Temperature",
+    # Physical / IoT
+    "DISTANCE": "Distance",
+    "ALTITUDE": "Altitude",
+    "FLOW_RATE": "Flow Rate",
+    "WEIGHT": "Weight",
+    "FORCE": "Force",
+    "SOUND_LEVEL": "Sound Level",
+    "VIBRATION": "Vibration",
+    "ACCELERATION_X": "Acceleration X",
+    "ACCELERATION_Y": "Acceleration Y",
+    "ACCELERATION_Z": "Acceleration Z",
+    "GYRO_X": "Gyro X",
+    "GYRO_Y": "Gyro Y",
+    "GYRO_Z": "Gyro Z",
+    "TILT": "Tilt",
+    "MOTION": "Motion",
+    "DOOR_STATE": "Door State",
+    "LEAK_DETECTED": "Leak Detected",
+    "PEOPLE_COUNT": "People Count",
+    "DOOR_OPEN_COUNT": "Door Open Count",
+    "RSSI": "RSSI",
+    "SNR": "SNR",
+    "GPS_SPEED": "GPS Speed",
+}
