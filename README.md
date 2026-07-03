@@ -75,12 +75,7 @@ The response contains the token exactly once:
 }
 ```
 
-Revoke with:
-
-```bash
-curl -X DELETE https://hydronode.texhfexlabs.de/api/user/api-tokens/{id} \
-  -H "Authorization: Bearer <your JWT session token or a PAT>"
-```
+Revoking is only possible on the website (**Profile → API Tokens**).
 
 </details>
 
