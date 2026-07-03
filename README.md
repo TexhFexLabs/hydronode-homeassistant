@@ -215,15 +215,6 @@ Token redacted.
 
 ---
 
-## Backend API reference
-
-This integration talks to the HydroNode HA API contract documented in
-[`docs/api/HOMEASSISTANT_INTEGRATION.md`](https://github.com/TexhFexLabs/HydroNode/blob/main/docs/api/HOMEASSISTANT_INTEGRATION.md)
-of the main HydroNode repository: token management, `GET /api/ha/v1/bootstrap`,
-`GET /api/ha/v1/states`, public station follow/unfollow, and the `/ws/ha/v1` WebSocket protocol.
-
----
-
 ## License
 
 Proprietary — © TexhFex Labs. See [`LICENSE`](LICENSE).
