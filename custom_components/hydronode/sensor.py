@@ -53,7 +53,7 @@ async def async_setup_entry(
                 # Two channels of the same type on one sensor would collide on the
                 # pretty type name, so only then the channel name disambiguates.
                 type_counts = Counter(
-                    type_info["type"] for type_info in sensor.get("types", [])
+                    type_info["type"].upper() for type_info in sensor.get("types", [])
                 )
                 for type_info in sensor.get("types", []):
                     key: StateKey = (
@@ -71,7 +71,7 @@ async def async_setup_entry(
                             station,
                             sensor,
                             type_info,
-                            disambiguate=type_counts[type_info["type"]] > 1,
+                            disambiguate=type_counts[type_info["type"].upper()] > 1,
                         )
                     )
         # Forget keys that dropped out of the bootstrap (unfollow, revoked share,
@@ -105,8 +105,11 @@ class HydroNodeSensorEntity(CoordinatorEntity[HydroNodeCoordinator], SensorEntit
         self._sensor_active: bool = sensor.get("active", True)
         self._key: StateKey = (self._sensor_id, self._type, self._channel)
 
+        # Types are matched case-insensitively, like the webapp: user-defined fPort
+        # configs may register them as e.g. "pm2_5" instead of "PM2_5".
+        type_key = self._type.upper()
         device_class, unit, state_class = SENSOR_TYPE_MAP.get(
-            self._type, GENERIC_SENSOR_TYPE
+            type_key, GENERIC_SENSOR_TYPE
         )
         self._attr_device_class = device_class
         self._attr_native_unit_of_measurement = unit
@@ -118,7 +121,7 @@ class HydroNodeSensorEntity(CoordinatorEntity[HydroNodeCoordinator], SensorEntit
         # ("Particle Count >0.5µm" instead of "nc_0_5"). The channel name is only
         # appended when one sensor reports the same type on several channels.
         display_name = SENSOR_TYPE_NAMES.get(
-            self._type, self._type.replace("_", " ").title()
+            type_key, self._type.replace("_", " ").title()
         )
         if disambiguate and self._channel:
             display_name = f"{display_name} ({self._channel})"

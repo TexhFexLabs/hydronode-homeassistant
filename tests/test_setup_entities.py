@@ -121,6 +121,7 @@ FOLLOWED_STATION = {
             "active": True,
             "types": [
                 {"type": "NC_0_5", "channelName": "nc_0_5", "scale": 0.1},
+                {"type": "pm2_5", "channelName": None},
                 {"type": "TEMPERATURE", "channelName": None},
             ],
         }
@@ -177,6 +178,16 @@ async def test_unfollowed_station_is_removed_on_bootstrap_refresh(
     # fPort scale 0.1 → one displayed decimal, stored in the registry options.
     nc_options = entity_registry.async_get(nc_entity_id).options.get("sensor", {})
     assert nc_options.get("suggested_display_precision") == 1
+
+    # Lowercase type from a user-defined fPort config still resolves the pretty
+    # name and unit ("PM2.5" / µg/m³), not "Pm2 5".
+    pm_entity_id = entity_registry.async_get_entity_id(
+        "sensor", DOMAIN, "sensor2_pm2_5_"
+    )
+    pm_state = hass.states.get(pm_entity_id)
+    assert pm_state.attributes.get("friendly_name") == "Wetterstation PM2.5"
+    assert pm_state.attributes.get("unit_of_measurement") == "μg/m³"
+    assert pm_state.attributes.get("device_class") == "pm25"
 
     # Unfollow: next bootstrap only contains st1.
     aioclient_mock.clear_requests()
