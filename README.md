@@ -217,4 +217,4 @@ Token redacted.
 
 ## License
 
-Proprietary — © TexhFex Labs. See [`LICENSE`](LICENSE).
+MIT — © TexhFex Labs. See [`LICENSE`](LICENSE).
