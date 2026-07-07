@@ -4,6 +4,20 @@
 
 # HydroNode for Home Assistant
 
+<p>
+  <a href="https://github.com/hacs/integration"><img src="https://img.shields.io/badge/HACS-Custom-41BDF5.svg" alt="HACS Custom"></a>
+  <a href="https://github.com/TexhFexLabs/hydronode-homeassistant/releases/latest"><img src="https://img.shields.io/github/v/release/TexhFexLabs/hydronode-homeassistant?label=release&color=2ea44f" alt="Latest release"></a>
+  <a href="https://github.com/TexhFexLabs/hydronode-homeassistant/actions/workflows/validate.yml"><img src="https://github.com/TexhFexLabs/hydronode-homeassistant/actions/workflows/validate.yml/badge.svg" alt="Validate"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT license"></a>
+</p>
+
+<p>
+  <a href="https://hydronode.texhfexlabs.de/"><strong>Website</strong></a> ·
+  <a href="https://hydronode.texhfexlabs.de/docs/guide/">Getting Started</a> ·
+  <a href="https://hydronode.texhfexlabs.de/docs/faq/">FAQ</a> ·
+  <a href="https://github.com/TexhFexLabs/HydroNode-Library">Arduino/ESP32 Library</a>
+</p>
+
 Home Assistant integration for [HydroNode](https://hydronode.texhfexlabs.de) — auto-discovered sensor
 entities for every sensor you own, that's shared with you, or that you follow, live values
 pushed over WebSocket, and anomaly / AI-analysis events on the Home Assistant event bus.
@@ -24,6 +38,10 @@ pushed over WebSocket, and anomaly / AI-analysis events on the Home Assistant ev
 ## Installation
 
 ### HACS (custom repository)
+
+[![Open your Home Assistant instance and open this repository inside HACS.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=TexhFexLabs&repository=hydronode-homeassistant&category=integration)
+
+Or manually:
 
 1. In Home Assistant, open **HACS → Integrations → ⋮ → Custom repositories**.
 2. Add `https://github.com/TexhFexLabs/hydronode-homeassistant` as an **Integration**.
@@ -214,6 +232,12 @@ diagnostics**) include the current bootstrap payload and states count, with the 
 Token redacted.
 
 ---
+
+## Related
+
+- [HydroNode website & docs](https://hydronode.texhfexlabs.de/) — dashboard, guides, FAQ
+- [HydroNode-Library](https://github.com/TexhFexLabs/HydroNode-Library) — Arduino/ESP32 client for building your own HydroNode sensors
+- [LoRaWAN integration guide](https://hydronode.texhfexlabs.de/docs/guide/lorawan/) — battery-powered sensors without WiFi
 
 ## License
 
