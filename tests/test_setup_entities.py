@@ -97,7 +97,9 @@ async def test_setup_entry_creates_device_and_entities(hass, aioclient_mock):
     assert temp_state.attributes.get("device_class") == "temperature"
     assert temp_state.attributes.get("unit_of_measurement") == "°C"
     # Entity name is only the measurement title; the device supplies the station prefix.
-    assert temp_state.attributes.get("friendly_name") == "Gewaechshaus Water Temperature"
+    assert (
+        temp_state.attributes.get("friendly_name") == "Gewaechshaus Water Temperature"
+    )
 
     ph_state = hass.states.get(ph_entity_id)
     assert ph_state.attributes.get("device_class") == "ph"
@@ -129,9 +131,7 @@ FOLLOWED_STATION = {
 }
 
 
-async def test_unfollowed_station_is_removed_on_bootstrap_refresh(
-    hass, aioclient_mock
-):
+async def test_unfollowed_station_is_removed_on_bootstrap_refresh(hass, aioclient_mock):
     """A station that drops out of the bootstrap loses its device and entities."""
     now = dt_util.utcnow().isoformat()
     two_stations = {
@@ -212,3 +212,44 @@ async def test_unfollowed_station_is_removed_on_bootstrap_refresh(
         )
         is not None
     )
+
+
+async def test_failed_unload_keeps_websocket_running(hass):
+    from unittest.mock import AsyncMock, Mock
+    from custom_components.hydronode import async_unload_entry
+
+    entry = MockConfigEntry(
+        domain=DOMAIN, data={CONF_BASE_URL: BASE_URL, CONF_TOKEN: TOKEN}
+    )
+    ws = Mock(stop=AsyncMock())
+    entry.runtime_data = Mock(ws_client=ws)
+    with patch(
+        "homeassistant.config_entries.ConfigEntries.async_unload_platforms",
+        return_value=False,
+    ):
+        assert not await async_unload_entry(hass, entry)
+    ws.stop.assert_not_awaited()
+
+
+async def test_inactive_metadata_changes_availability(hass):
+    from unittest.mock import AsyncMock
+    from custom_components.hydronode.coordinator import HydroNodeCoordinator
+    from custom_components.hydronode.sensor import HydroNodeSensorEntity
+
+    client = AsyncMock()
+    coordinator = HydroNodeCoordinator(hass, client, 60)
+    station = BOOTSTRAP["stations"][0]
+    sensor = station["sensors"][0]
+    entity = HydroNodeSensorEntity(coordinator, station, sensor, sensor["types"][0])
+    coordinator.data = {
+        ("sensor1", "WATER_TEMPERATURE", None): {
+            "value": 21.5,
+            "timestamp": dt_util.utcnow().isoformat(),
+        }
+    }
+    coordinator.last_update_success = True
+    assert entity.available
+    coordinator.sensor_active["sensor1"] = False
+    assert not entity.available
+    coordinator.sensor_active["sensor1"] = True
+    assert entity.available

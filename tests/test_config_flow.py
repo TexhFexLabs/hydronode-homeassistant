@@ -138,3 +138,80 @@ async def test_options_flow_defaults(hass, aioclient_mock):
     assert result_options["data"]["poll_interval"] == 30
     assert result_options["data"]["include_followed"] is False
     assert result_options["data"]["fire_value_events"] is True
+
+
+async def test_reauth_cannot_change_account(hass, aioclient_mock):
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="original",
+        data={CONF_BASE_URL: BASE_URL, CONF_TOKEN: TOKEN},
+    )
+    entry.add_to_hass(hass)
+    aioclient_mock.get(f"{BASE_URL}/api/ha/v1/bootstrap", json=BOOTSTRAP_OK)
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": config_entries.SOURCE_REAUTH, "entry_id": entry.entry_id},
+        data=entry.data,
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_TOKEN: "hat_other"}
+    )
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "wrong_account"
+    assert entry.data[CONF_TOKEN] == TOKEN
+    assert entry.unique_id == "original"
+
+
+async def test_reconfigure_domain_reuses_token_and_identity(hass, aioclient_mock):
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="user-123",
+        data={CONF_BASE_URL: "https://hydronode.texhfexlabs.de", CONF_TOKEN: TOKEN},
+    )
+    entry.add_to_hass(hass)
+    aioclient_mock.get("https://hydronode.tech/api/ha/v1/bootstrap", json=BOOTSTRAP_OK)
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={
+            "source": config_entries.SOURCE_RECONFIGURE,
+            "entry_id": entry.entry_id,
+        },
+    )
+    with patch(
+        "homeassistant.config_entries.ConfigEntries.async_reload", return_value=True
+    ):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {CONF_BASE_URL: "https://hydronode.tech/"}
+        )
+        await hass.async_block_till_done()
+    assert result["reason"] == "reconfigure_successful"
+    assert entry.data == {CONF_BASE_URL: "https://hydronode.tech", CONF_TOKEN: TOKEN}
+    assert entry.unique_id == "user-123"
+
+
+async def test_reconfigure_wrong_account_preserves_url(hass, aioclient_mock):
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="original",
+        data={CONF_BASE_URL: BASE_URL, CONF_TOKEN: TOKEN},
+    )
+    entry.add_to_hass(hass)
+    aioclient_mock.get("https://hydronode.tech/api/ha/v1/bootstrap", json=BOOTSTRAP_OK)
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={
+            "source": config_entries.SOURCE_RECONFIGURE,
+            "entry_id": entry.entry_id,
+        },
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_BASE_URL: "https://hydronode.tech"}
+    )
+    assert result["reason"] == "wrong_account"
+    assert entry.data[CONF_BASE_URL] == BASE_URL

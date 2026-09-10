@@ -29,7 +29,9 @@ class FakeWSMessage:
 class FakeWebSocket:
     """Mimics aiohttp's ClientWebSocketResponse for one connection lifecycle."""
 
-    def __init__(self, messages: list[FakeWSMessage], close_code: int | None = 1000) -> None:
+    def __init__(
+        self, messages: list[FakeWSMessage], close_code: int | None = 1000
+    ) -> None:
         self._auth_response = messages[0] if messages else None
         self._messages = messages[1:]
         self.close_code = close_code
@@ -142,7 +144,9 @@ async def test_dispatch_routes_all_message_types(hass):
 
     client._dispatch(_envelope("value.updated", {"sensorId": "s1"}))
     client._dispatch(_envelope("anomaly.detected", {"anomalyId": "a1"}))
-    client._dispatch(_envelope("anomaly.ai_analyzed", {"anomalyId": "a1", "provider": "x"}))
+    client._dispatch(
+        _envelope("anomaly.ai_analyzed", {"anomalyId": "a1", "provider": "x"})
+    )
     client._dispatch(_envelope("some.unknown.type", {"foo": "bar"}))
 
     assert seen["value"] == {"sensorId": "s1"}
@@ -157,7 +161,7 @@ async def test_dispatch_ignores_non_json_payload(hass):
 
 
 async def test_auth_timeout_raises_ws_error(hass):
-    """No auth response within WS_AUTH_TIMEOUT -> _connect_once() raises (auth failed)."""
+    """An auth response timeout is retryable and must not request a new token."""
     import asyncio
 
     ws = FakeWebSocket([])
@@ -175,15 +179,18 @@ async def test_auth_timeout_raises_ws_error(hass):
     original_timeout = ws_module.WS_AUTH_TIMEOUT
     ws_module.WS_AUTH_TIMEOUT = 0.01
     try:
-        with pytest.raises(HydroNodeWsError):
+        with pytest.raises(HydroNodeWsError) as error:
             await client._connect_once()
+        from custom_components.hydronode.ws import _AuthFailed
+
+        assert not isinstance(error.value, _AuthFailed)
     finally:
         ws_module.WS_AUTH_TIMEOUT = original_timeout
 
 
 async def test_run_loop_calls_on_auth_failed_and_stops(hass):
     """The reconnect loop invokes on_auth_failed() and exits (no retry) on 4401-style errors."""
-    ws = FakeWebSocket([FakeWSMessage(aiohttp.WSMsgType.TEXT, json.dumps({"type": "nope"}))])
+    ws = FakeWebSocket([FakeWSMessage(aiohttp.WSMsgType.CLOSE, "")], close_code=4401)
     session = FakeSession(ws)
 
     auth_failed_calls: list[bool] = []
@@ -196,7 +203,9 @@ async def test_run_loop_calls_on_auth_failed_and_stops(hass):
     assert auth_failed_calls == [True]
 
 
-async def test_value_updated_dispatch_updates_coordinator_and_anomaly_fires_bus_event(hass):
+async def test_value_updated_dispatch_updates_coordinator_and_anomaly_fires_bus_event(
+    hass,
+):
     """End-to-end wiring: value.updated patches the coordinator; anomaly fires the HA bus."""
     mock_client = AsyncMock()
     mock_client.states.return_value = [
@@ -251,3 +260,47 @@ async def test_value_updated_dispatch_updates_coordinator_and_anomaly_fires_bus_
 
     assert len(events) == 1
     assert events[0].data["anomalyId"] == "a1"
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [[], 5, None, "text", {"type": []}, {"type": "value.updated", "data": []}],
+)
+async def test_malformed_envelope_is_ignored(hass, payload):
+    client = _make_client(FakeSession(FakeWebSocket([])), hass=hass)
+    client._dispatch(FakeWSMessage(aiohttp.WSMsgType.TEXT, json.dumps(payload)))
+
+
+async def test_callback_failure_does_not_disconnect(hass):
+    def fail(data):
+        raise ValueError("bad event")
+
+    client = _make_client(
+        FakeSession(FakeWebSocket([])), hass=hass, on_value_updated=fail
+    )
+    client._dispatch(_envelope("value.updated", {"sensorId": "s1"}))
+
+
+async def test_account_mismatch_rejects_ws(hass):
+    from custom_components.hydronode.ws import _AuthFailed
+
+    client = _make_client(
+        FakeSession(FakeWebSocket([_auth_ok("wrong")])),
+        hass=hass,
+        expected_user_id="expected",
+    )
+    with pytest.raises(_AuthFailed):
+        await client._connect_once()
+
+
+async def test_initial_connection_does_not_repeat_bootstrap(hass):
+    callback = AsyncMock()
+    client = _make_client(
+        FakeSession(FakeWebSocket([_auth_ok()])), hass=hass, on_reconnect=callback
+    )
+    with pytest.raises(HydroNodeWsError):
+        await client._connect_once()
+    callback.assert_not_awaited()
+    with pytest.raises(HydroNodeWsError):
+        await client._connect_once()
+    callback.assert_awaited_once()

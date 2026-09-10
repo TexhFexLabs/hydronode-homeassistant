@@ -54,7 +54,7 @@ async def async_setup_entry(
             async_add_entities(new_entities)
 
     _add_from_bootstrap(coordinator.bootstrap)
-    coordinator.add_new_entity_listener(_add_from_bootstrap)
+    entry.async_on_unload(coordinator.add_new_entity_listener(_add_from_bootstrap))
 
 
 class HydroNodeEventEntity(EventEntity):

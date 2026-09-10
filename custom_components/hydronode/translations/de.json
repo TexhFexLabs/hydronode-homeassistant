@@ -15,16 +15,26 @@
         "data": {
           "token": "Personal Access Token"
         }
+      },
+      "reconfigure": {
+        "title": "HydroNode-Adresse ändern",
+        "description": "Für den Domainwechsel https://hydronode.tech eintragen. Dein gespeicherter Token wird verwendet und das Konto geprüft.",
+        "data": {
+          "base_url": "Basis-URL"
+        }
       }
     },
     "error": {
       "invalid_auth": "Ungültiges oder widerrufenes Token.",
       "cannot_connect": "HydroNode-Server nicht erreichbar.",
-      "unknown": "Unerwarteter Fehler."
+      "unknown": "Unerwarteter Fehler.",
+      "invalid_url": "Ungültige Basis-URL. Nutze HTTPS ohne Zugangsdaten, Abfrageparameter oder Fragment."
     },
     "abort": {
       "already_configured": "Dieses HydroNode-Konto ist bereits eingerichtet.",
-      "reauth_successful": "Erneut erfolgreich mit HydroNode verbunden."
+      "reauth_successful": "Erneut erfolgreich mit HydroNode verbunden.",
+      "wrong_account": "Der Token gehört zu einem anderen HydroNode-Konto.",
+      "reconfigure_successful": "HydroNode-Adresse erfolgreich geändert."
     }
   },
   "options": {
@@ -36,6 +46,51 @@
           "include_followed": "Gefolgte öffentliche Stationen einbeziehen",
           "fire_value_events": "Bei jeder Messwert-Aktualisierung ein Event auslösen"
         }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "air_quality_score": {
+        "name": "Luftgüte"
+      },
+      "environment_score": {
+        "name": "Umgebung"
+      },
+      "confidence": {
+        "name": "Konfidenz der Analyse"
+      },
+      "alert_severity": {
+        "name": "Alarmstufe",
+        "state": {
+          "NONE": "Keine",
+          "LOW": "Niedrig",
+          "MEDIUM": "Mittel",
+          "HIGH": "Hoch",
+          "CRITICAL": "Kritisch"
+        }
+      },
+      "anomaly_type": {
+        "name": "Anomalietyp",
+        "state": {
+          "SPIKE": "Ausschlag nach oben",
+          "DROP": "Einbruch",
+          "DRIFT": "Drift",
+          "GRADUAL_DRIFT": "Langsame Drift",
+          "THRESHOLD_BREACH": "Grenzwertüberschreitung",
+          "PERIODIC_REVIEW": "Regelmäßige Prüfung"
+        }
+      },
+      "analysis_timestamp": {
+        "name": "Letzte Analyse"
+      }
+    },
+    "binary_sensor": {
+      "ventilation_event": {
+        "name": "Lüftungsereignis"
+      },
+      "alert": {
+        "name": "Alarm"
       }
     }
   }

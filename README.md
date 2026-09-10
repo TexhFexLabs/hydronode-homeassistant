@@ -12,23 +12,23 @@
 </p>
 
 <p>
-  <a href="https://hydronode.texhfexlabs.de/"><strong>Website</strong></a> ·
-  <a href="https://hydronode.texhfexlabs.de/docs/guide/">Getting Started</a> ·
-  <a href="https://hydronode.texhfexlabs.de/docs/faq/">FAQ</a> ·
+  <a href="https://hydronode.tech/"><strong>Website</strong></a> ·
+  <a href="https://hydronode.tech/docs/guide/">Getting Started</a> ·
+  <a href="https://hydronode.tech/docs/faq/">FAQ</a> ·
   <a href="https://github.com/TexhFexLabs/HydroNode-Library">Arduino/ESP32 Library</a>
 </p>
 
-Home Assistant integration for [HydroNode](https://hydronode.texhfexlabs.de) — auto-discovered sensor
+Home Assistant integration for [HydroNode](https://hydronode.tech) — auto-discovered sensor
 entities for every sensor you own, that's shared with you, or that you follow, live values
 pushed over WebSocket, and anomaly / AI-analysis events on the Home Assistant event bus.
 
 - **Auto-discovery** — new sensors and follows show up without reconfiguration (bootstrap
-  refetch every 15 minutes and on every WebSocket reconnect).
+  refetch every 5 minutes with the default polling interval and on WebSocket reconnect).
 - **Native graphs** — entities carry the correct `device_class` / `unit_of_measurement` /
   `state_class`, so Home Assistant's long-term statistics and history graphs work out of the box.
 - **Hybrid transport** — REST polling every 60 s as a reliable baseline, WebSocket push for
-  immediate updates. If the WebSocket drops, polling keeps entities current; no data loss, only
-  a bit of latency.
+  immediate updates. If the WebSocket drops, polling recovers the latest measurements.
+  Events during a disconnection cannot be replayed by the backend.
 - **Events, not just states** — anomaly detections and AI analyses fire on the HA event bus
   (`hydronode_anomaly`, `hydronode_ai_analysis`) with the full set of the sensor's current values
   attached, so automations can react directly.
@@ -61,7 +61,7 @@ Or manually:
 The integration authenticates with a HydroNode **Personal Access Token** (`hat_…`), not your
 regular account password. You create one in the HydroNode web app:
 
-1. Open [hydronode.texhfexlabs.de](https://hydronode.texhfexlabs.de) and **sign in** (or create
+1. Open [hydronode.tech](https://hydronode.tech) and **sign in** (or create
    an account first).
 2. Click your avatar in the **top right** and open **Profile**.
 3. Scroll to the **API Tokens** section and create a new token (name it e.g. "Home Assistant").
@@ -78,11 +78,31 @@ another PAT), so a leaked token can't mint further tokens.
 
 1. In Home Assistant, go to **Settings → Devices & Services → Add Integration** and search for
    **HydroNode**.
-2. Enter your **Base URL** (default `https://hydronode.texhfexlabs.de`) and the **Personal Access Token**
+2. Enter your **Base URL** (default `https://hydronode.tech`) and the **Personal Access Token**
    you created above.
 3. The integration validates the token against `GET /api/ha/v1/bootstrap` and, on success,
    creates one device per station (including a pseudo-device for sensors without a station) and
    one sensor entity per `(sensor, type, channel)` combination.
+
+### Moving from the previous domain
+
+New installations default to `https://hydronode.tech`. Existing installations keep their
+saved URL. To move, open the integration entry's **⋮ → Reconfigure** menu and enter
+`https://hydronode.tech`. The integration checks the existing token and requires the same
+account before saving the URL; entity IDs and history are preserved.
+
+The previous URL `https://hydronode.texhfexlabs.de` remains usable while that backend
+endpoint is maintained. A `hat_…` token contains no domain: the backend stores SHA-256 of
+the token alone. Both domains must use the same account/token database. No automatic
+failover or token forwarding through redirects takes place.
+
+For the one-year transition, operate both `/api/ha/v1/*` and `/ws/ha/v1` behind valid TLS
+certificates and proxy them directly to the backend. Keeping only LoRaWAN webhook URLs
+working is insufficient for Home Assistant. Do not replace API/WebSocket routes with a
+website redirect. The integration does not configure DNS, TLS or reverse-proxy routing.
+
+Use HTTPS for remote deployments. HTTP is supported for explicitly configured local
+self-hosted development endpoints, but sends the bearer token without encryption.
 
 ### Options
 
@@ -106,9 +126,14 @@ re-add the integration.
 
 - **Sensors** (`sensor.*`) — one per `(sensor, type, channel)`. Known HydroNode sensor types
   (temperature, humidity, CO2, PM2.5/PM10, pH, EC, rainfall, wind, and more — see
-  [`const.py`](custom_components/hydronode/const.py) for the full list of 30+ types) get the
+  [`const.py`](custom_components/hydronode/const.py) for the full type catalog) get the
   matching `device_class`/`unit_of_measurement`/`state_class`. Unknown types still work as plain
   numeric sensors.
+- **Analysis sensors** (`sensor.*`) — air quality, environment score, analysis confidence,
+  alert severity, anomaly type and last analysis timestamp for each station.
+- **Analysis binary sensors** (`binary_sensor.*`) — ventilation event and alert flags.
+  Analysis entities retain their last values across restarts. A new installation receives
+  its first values with the next AI-analysis event; these values are not fetched by REST.
 - **Events** (`event.*`) — one per station device, with `event_types: ["anomaly", "ai_analysis"]`.
   Each event's `event_data` mirrors the WebSocket payload (see below), so you can read it
   directly in automation triggers via `trigger.event.data`.
@@ -228,16 +253,15 @@ automation:
 ## Diagnostics
 
 Config entry diagnostics (**Settings → Devices & Services → HydroNode → ⋮ → Download
-diagnostics**) include the current bootstrap payload and states count, with the Personal Access
-Token redacted.
+diagnostics**) include the current bootstrap payload and states count, with the token, URL, account/device identifiers, names and coordinates redacted.
 
 ---
 
 ## Related
 
-- [HydroNode website & docs](https://hydronode.texhfexlabs.de/) — dashboard, guides, FAQ
+- [HydroNode website & docs](https://hydronode.tech/) — dashboard, guides, FAQ
 - [HydroNode-Library](https://github.com/TexhFexLabs/HydroNode-Library) — Arduino/ESP32 client for building your own HydroNode sensors
-- [LoRaWAN integration guide](https://hydronode.texhfexlabs.de/docs/guide/lorawan/) — battery-powered sensors without WiFi
+- [LoRaWAN integration guide](https://hydronode.tech/docs/guide/lorawan/) — battery-powered sensors without WiFi
 
 ## License
 

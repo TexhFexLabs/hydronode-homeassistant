@@ -36,7 +36,7 @@ CONF_POLL_INTERVAL = "poll_interval"
 CONF_INCLUDE_FOLLOWED = "include_followed"
 CONF_FIRE_VALUE_EVENTS = "fire_value_events"
 
-DEFAULT_BASE_URL = "https://hydronode.texhfexlabs.de"
+DEFAULT_BASE_URL = "https://hydronode.tech"
 DEFAULT_POLL_INTERVAL = 60  # seconds, per HOMEASSISTANT_INTEGRATION.md
 MIN_POLL_INTERVAL = 15
 DEFAULT_INCLUDE_FOLLOWED = True
@@ -604,3 +604,24 @@ SENSOR_TYPE_NAMES: dict[str, str] = {
     "SNR": "SNR",
     "GPS_SPEED": "GPS Speed",
 }
+
+
+# --- AI analysis -----------------------------------------------------------------
+# Values the backend can put into SensorAnomaly.anomalyType. Only five are ever
+# written today — "SPIKE"/"DROP" (AnomalyDetector, sigma spike), "THRESHOLD_BREACH"
+# (AnomalyDetector, outside normal range), "DRIFT" (AnomalyDetector, gradual change)
+# and "PERIODIC_REVIEW" (AnomalyAiScheduler). "GRADUAL_DRIFT" is legacy: no code path
+# writes it any more, but older rows and the web client's union type still carry it.
+# The column is a free-form String, so extend this list when the backend gains a type;
+# an unlisted value is logged and reported as unknown instead of breaking the enum.
+ANOMALY_TYPE_OPTIONS: list[str] = [
+    "SPIKE",
+    "DROP",
+    "DRIFT",
+    "GRADUAL_DRIFT",
+    "THRESHOLD_BREACH",
+    "PERIODIC_REVIEW",
+]
+
+# Fixed by the AI prompt in AnomalyAiScheduler ("NONE|LOW|MEDIUM|HIGH|CRITICAL").
+ALERT_SEVERITY_OPTIONS: list[str] = ["NONE", "LOW", "MEDIUM", "HIGH", "CRITICAL"]

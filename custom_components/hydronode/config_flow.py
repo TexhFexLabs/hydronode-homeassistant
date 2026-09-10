@@ -22,7 +22,13 @@ from homeassistant.helpers.selector import (
     TextSelectorType,
 )
 
-from .api import HydroNodeApiClient, HydroNodeApiError, HydroNodeAuthError
+from .api import (
+    HydroNodeApiClient,
+    HydroNodeApiError,
+    HydroNodeAuthError,
+    HydroNodeInvalidUrl,
+    normalize_base_url,
+)
 from .const import (
     CONF_BASE_URL,
     CONF_FIRE_VALUE_EVENTS,
@@ -82,16 +88,19 @@ class HydroNodeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
 
         if user_input is not None:
-            base_url = user_input[CONF_BASE_URL].rstrip("/")
-            token = user_input[CONF_TOKEN]
+            base_url = user_input[CONF_BASE_URL]
+            token = user_input[CONF_TOKEN].strip()
             try:
+                base_url = normalize_base_url(base_url)
                 user = await _validate_credentials(self.hass, base_url, token)
+            except HydroNodeInvalidUrl:
+                errors[CONF_BASE_URL] = "invalid_url"
             except HydroNodeAuthError:
                 errors["base"] = "invalid_auth"
             except HydroNodeApiError:
                 errors["base"] = "cannot_connect"
             except Exception:  # noqa: BLE001
-                _LOGGER.exception("Unexpected error validating HydroNode credentials")
+                _LOGGER.error("Unexpected error validating HydroNode credentials")
                 errors["base"] = "unknown"
             else:
                 await self.async_set_unique_id(user["id"])
@@ -120,15 +129,19 @@ class HydroNodeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         if user_input is not None and self._reauth_entry is not None:
             base_url = self._reauth_entry.data.get(CONF_BASE_URL, DEFAULT_BASE_URL)
-            token = user_input[CONF_TOKEN]
+            token = user_input[CONF_TOKEN].strip()
             try:
-                await _validate_credentials(self.hass, base_url, token)
+                user = await _validate_credentials(self.hass, base_url, token)
+                if user["id"] != self._reauth_entry.unique_id:
+                    return self.async_abort(reason="wrong_account")
+            except HydroNodeInvalidUrl:
+                errors["base"] = "invalid_url"
             except HydroNodeAuthError:
                 errors["base"] = "invalid_auth"
             except HydroNodeApiError:
                 errors["base"] = "cannot_connect"
             except Exception:  # noqa: BLE001
-                _LOGGER.exception("Unexpected error validating HydroNode credentials")
+                _LOGGER.error("Unexpected error validating HydroNode credentials")
                 errors["base"] = "unknown"
             else:
                 self.hass.config_entries.async_update_entry(
@@ -142,6 +155,42 @@ class HydroNodeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="reauth_confirm",
             data_schema=STEP_REAUTH_DATA_SCHEMA,
             errors=errors,
+        )
+
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Change the endpoint while preserving the account, token and entity IDs."""
+        entry = self._get_reconfigure_entry()
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            try:
+                base_url = normalize_base_url(user_input[CONF_BASE_URL])
+                user = await _validate_credentials(
+                    self.hass, base_url, entry.data[CONF_TOKEN]
+                )
+            except HydroNodeInvalidUrl:
+                errors[CONF_BASE_URL] = "invalid_url"
+            except HydroNodeAuthError:
+                errors["base"] = "invalid_auth"
+            except HydroNodeApiError:
+                errors["base"] = "cannot_connect"
+            else:
+                if user["id"] != entry.unique_id:
+                    return self.async_abort(reason="wrong_account")
+                return self.async_update_reload_and_abort(
+                    entry, data_updates={CONF_BASE_URL: base_url}
+                )
+        schema = vol.Schema(
+            {
+                vol.Required(
+                    CONF_BASE_URL,
+                    default=entry.data.get(CONF_BASE_URL, DEFAULT_BASE_URL),
+                ): str
+            }
+        )
+        return self.async_show_form(
+            step_id="reconfigure", data_schema=schema, errors=errors
         )
 
     @staticmethod

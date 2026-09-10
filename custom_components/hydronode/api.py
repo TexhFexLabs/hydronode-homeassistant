@@ -2,14 +2,20 @@
 
 from __future__ import annotations
 
-import logging
+import json
 from typing import Any
 
 import aiohttp
+from yarl import URL
+
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.aiohttp_client import async_create_clientsession
 
 from .const import BOOTSTRAP_PATH, STATES_PATH
+from .validation import valid_bootstrap, valid_state
 
-_LOGGER = logging.getLogger(__name__)
+REQUEST_TIMEOUT = aiohttp.ClientTimeout(total=30, connect=10)
+MAX_RESPONSE_BYTES = 8 * 1024 * 1024
 
 
 class HydroNodeApiError(Exception):
@@ -17,58 +23,120 @@ class HydroNodeApiError(Exception):
 
 
 class HydroNodeAuthError(HydroNodeApiError):
-    """Raised when the server rejects the Personal Access Token (HTTP 401)."""
+    """The server rejected the token or its permissions."""
 
 
 class HydroNodeConnectionError(HydroNodeApiError):
-    """Raised on network/transport failures reaching the HydroNode backend."""
+    """Network/transport failure reaching the backend."""
+
+
+class HydroNodeInvalidUrl(HydroNodeApiError):
+    """Invalid or unsafe base URL."""
+
+
+def normalize_base_url(base_url: str) -> str:
+    """Accept HTTP(S) deployments without URL credentials, queries or fragments."""
+    try:
+        raw = base_url.strip()
+        if any(ord(char) < 32 or ord(char) == 127 for char in raw):
+            raise ValueError
+        url = URL(raw)
+        if (
+            url.scheme not in ("http", "https")
+            or not url.host
+            or url.user is not None
+            or url.query_string
+            or url.fragment
+            or url.port is None
+        ):
+            raise ValueError
+        if (
+            url.host in ("hydronode.tech", "hydronode.texhfexlabs.de")
+            and url.scheme != "https"
+        ):
+            raise ValueError
+        return str(url).rstrip("/")
+    except (TypeError, ValueError, AttributeError) as err:
+        raise HydroNodeInvalidUrl(
+            "Use an HTTP(S) base URL without credentials or query parameters"
+        ) from err
+
+
+def async_create_hydronode_session(hass: HomeAssistant) -> aiohttp.ClientSession:
+    """Share HA's connector, but prohibit redirects before sending WS auth data.
+
+    aiohttp's ws_connect follows HTTP redirects and authenticates afterwards.
+    A trace hook stops that redirect before a token can reach another endpoint.
+    HA detaches this session on config-entry unload, retaining its shared pool.
+    """
+    trace = aiohttp.TraceConfig()
+
+    async def reject_redirect(*_args: Any) -> None:
+        raise HydroNodeConnectionError(
+            "HydroNode redirects are disabled; reconfigure the base URL"
+        )
+
+    trace.on_request_redirect.append(reject_redirect)
+    return async_create_clientsession(
+        hass, trace_configs=[trace], timeout=REQUEST_TIMEOUT
+    )
 
 
 class HydroNodeApiClient:
-    """Thin async wrapper around `/api/ha/v1/*`.
+    """One bootstrap request for discovery and one states request per poll."""
 
-    Only the two endpoints the HA integration needs for v1 (bootstrap discovery
-    and states polling) are implemented. Token management and follow/unfollow
-    are handled outside of Home Assistant (web/app UI) for now.
-    """
-
-    def __init__(self, session: aiohttp.ClientSession, base_url: str, token: str) -> None:
+    def __init__(
+        self, session: aiohttp.ClientSession, base_url: str, token: str
+    ) -> None:
         self._session = session
-        self._base_url = base_url.rstrip("/")
-        self._token = token
+        self._base_url = normalize_base_url(base_url)
+        self._token = token.strip()
+        if not self._token or any(
+            char.isspace() or ord(char) < 32 for char in self._token
+        ):
+            raise HydroNodeAuthError("Invalid token format")
 
     @property
     def base_url(self) -> str:
-        """Return the configured base URL (no trailing slash)."""
         return self._base_url
 
-    @property
-    def token(self) -> str:
-        """Return the configured Personal Access Token."""
-        return self._token
-
     async def bootstrap(self) -> dict[str, Any]:
-        """Fetch `GET /api/ha/v1/bootstrap` — all discoverable stations/sensors."""
         result = await self._get(BOOTSTRAP_PATH)
-        return result if isinstance(result, dict) else {}
+        if not valid_bootstrap(result):
+            raise HydroNodeApiError("Invalid bootstrap response")
+        return result
 
     async def states(self) -> list[dict[str, Any]]:
-        """Fetch `GET /api/ha/v1/states` — latest value per (sensor, type, channel)."""
         result = await self._get(STATES_PATH)
-        return result if isinstance(result, list) else []
+        if not isinstance(result, list) or not all(
+            valid_state(state) for state in result
+        ):
+            raise HydroNodeApiError("Invalid states response")
+        return result
 
     async def _get(self, path: str) -> Any:
-        url = f"{self._base_url}{path}"
         headers = {"Authorization": f"Bearer {self._token}"}
         try:
-            async with self._session.get(url, headers=headers) as response:
-                if response.status == 401:
-                    raise HydroNodeAuthError(f"Authentication rejected for {path}")
-                if response.status >= 400:
-                    body = await response.text()
+            async with self._session.get(
+                f"{self._base_url}{path}",
+                headers=headers,
+                timeout=REQUEST_TIMEOUT,
+                allow_redirects=False,
+            ) as response:
+                if response.status in (401, 403):
+                    raise HydroNodeAuthError("HydroNode token or permissions rejected")
+                if response.status != 200:
+                    # Remote response bodies can contain credentials or personal data.
                     raise HydroNodeApiError(
-                        f"Unexpected status {response.status} for {path}: {body}"
+                        f"Unexpected status {response.status} for {path}"
                     )
-                return await response.json(content_type=None)
-        except aiohttp.ClientError as err:
-            raise HydroNodeConnectionError(f"Connection error for {path}: {err}") from err
+                body = bytearray()
+                async for chunk in response.content.iter_chunked(64 * 1024):
+                    body.extend(chunk)
+                    if len(body) > MAX_RESPONSE_BYTES:
+                        raise HydroNodeApiError("HydroNode response exceeds size limit")
+                return json.loads(body)
+        except (aiohttp.ClientError, TimeoutError) as err:
+            raise HydroNodeConnectionError(f"Connection failed for {path}") from err
+        except (ValueError, UnicodeError, RecursionError) as err:
+            raise HydroNodeApiError(f"Invalid JSON response for {path}") from err

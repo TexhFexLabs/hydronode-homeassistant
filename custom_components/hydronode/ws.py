@@ -5,12 +5,14 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import random
 from typing import Any, Awaitable, Callable
 
 import aiohttp
 
 from homeassistant.core import HomeAssistant
 
+from .api import HydroNodeAuthError, normalize_base_url
 from .const import (
     EVENT_TYPE_AI_ANALYZED,
     EVENT_TYPE_ANOMALY_DETECTED,
@@ -37,7 +39,7 @@ class HydroNodeWsError(Exception):
 
 
 class _AuthFailed(HydroNodeWsError):
-    """Raised on close code 4401 or a rejected/timed-out handshake."""
+    """Raised on close code 4401 or an explicitly rejected handshake."""
 
 
 class _SessionLimit(HydroNodeWsError):
@@ -46,7 +48,7 @@ class _SessionLimit(HydroNodeWsError):
 
 def build_ws_url(base_url: str) -> str:
     """Translate an https(s)/http(s) base URL into the wss/ws endpoint URL."""
-    url = base_url.rstrip("/")
+    url = normalize_base_url(base_url)
     if url.startswith("https://"):
         url = "wss://" + url[len("https://") :]
     elif url.startswith("http://"):
@@ -68,6 +70,7 @@ class HydroNodeWebSocketClient:
         on_ai_analyzed: DataCallback,
         on_auth_failed: VoidCallback,
         on_reconnect: ReconnectCallback | None = None,
+        expected_user_id: str | None = None,
     ) -> None:
         self._hass = hass
         self._session = session
@@ -80,11 +83,18 @@ class HydroNodeWebSocketClient:
         self._on_reconnect = on_reconnect
         self._task: asyncio.Task | None = None
         self._stopped = False
+        self._expected_user_id = expected_user_id
+        self._has_connected = False
+        self._connected_at: float | None = None
 
     def start(self) -> None:
         """Start the background reconnect-loop task."""
+        if self._task is not None and not self._task.done():
+            return
         self._stopped = False
-        self._task = self._hass.loop.create_task(self._run())
+        self._task = self._hass.async_create_background_task(
+            self._run(), "HydroNode websocket"
+        )
 
     async def stop(self) -> None:
         """Cancel the background task and wait for it to finish."""
@@ -102,31 +112,37 @@ class HydroNodeWebSocketClient:
         while not self._stopped:
             try:
                 await self._connect_once()
-            except _AuthFailed:
+            except (_AuthFailed, HydroNodeAuthError):
                 self._on_auth_failed()
                 return
             except asyncio.CancelledError:
                 raise
             except HydroNodeWsError as err:
                 _LOGGER.debug("HydroNode WS closed, reconnecting: %s", err)
-            except Exception as err:  # noqa: BLE001 - any transport error -> reconnect
-                _LOGGER.debug("HydroNode WS error, reconnecting: %s", err)
+            except Exception:  # noqa: BLE001 - transport failure must reconnect
+                _LOGGER.debug("HydroNode WS transport error, reconnecting")
 
             if self._stopped:
                 return
 
-            await asyncio.sleep(backoff)
+            if self._connected_at is not None:
+                if self._hass.loop.time() - self._connected_at >= 30:
+                    backoff = WS_MIN_BACKOFF
+                self._connected_at = None
+            await asyncio.sleep(backoff * random.uniform(0.8, 1.2))
             backoff = min(backoff * 2, WS_MAX_BACKOFF)
 
     async def _connect_once(self) -> None:
-        async with self._session.ws_connect(self._ws_url, heartbeat=30) as ws:
+        async with self._session.ws_connect(
+            self._ws_url, heartbeat=30, max_msg_size=1024 * 1024
+        ) as ws:
             await ws.send_json({"type": MSG_TYPE_AUTH, "token": self._token})
 
             try:
                 auth_msg = await asyncio.wait_for(ws.receive(), timeout=WS_AUTH_TIMEOUT)
             except asyncio.TimeoutError as err:
                 await ws.close()
-                raise _AuthFailed("auth timeout") from err
+                raise HydroNodeWsError("auth response timeout") from err
 
             if auth_msg.type in (
                 aiohttp.WSMsgType.CLOSE,
@@ -139,11 +155,19 @@ class HydroNodeWebSocketClient:
             payload = self._safe_json(auth_msg)
             if not payload or payload.get("type") != MSG_TYPE_AUTH_OK:
                 await ws.close()
-                raise _AuthFailed("auth rejected")
+                raise HydroNodeWsError("invalid auth response")
 
-            _LOGGER.debug("HydroNode WS authenticated as user %s", payload.get("userId"))
+            if (
+                self._expected_user_id is not None
+                and payload.get("userId") != self._expected_user_id
+            ):
+                raise _AuthFailed("WebSocket account mismatch")
+            self._connected_at = self._hass.loop.time()
+            _LOGGER.debug("HydroNode WS authenticated")
 
-            if self._on_reconnect is not None:
+            reconnecting = self._has_connected
+            self._has_connected = True
+            if reconnecting and self._on_reconnect is not None:
                 result = self._on_reconnect()
                 if asyncio.iscoroutine(result):
                     await result
@@ -152,7 +176,7 @@ class HydroNodeWebSocketClient:
                 if msg.type == aiohttp.WSMsgType.TEXT:
                     self._dispatch(msg)
                 elif msg.type == aiohttp.WSMsgType.ERROR:
-                    raise HydroNodeWsError(f"WS transport error: {ws.exception()}")
+                    raise HydroNodeWsError("WS transport error")
 
             self._raise_for_close_code(ws.close_code)
 
@@ -168,21 +192,30 @@ class HydroNodeWebSocketClient:
         if payload is None:
             return
         msg_type = payload.get("type")
-        data = payload.get("data") or {}
+        data = payload.get("data")
+        if not isinstance(data, dict):
+            return
 
-        if msg_type == EVENT_TYPE_VALUE_UPDATED:
-            self._on_value_updated(data)
-        elif msg_type == EVENT_TYPE_ANOMALY_DETECTED:
-            self._on_anomaly_detected(data)
-        elif msg_type == EVENT_TYPE_AI_ANALYZED:
-            self._on_ai_analyzed(data)
-        else:
-            _LOGGER.debug("Unknown HydroNode WS message type: %s", msg_type)
+        handler = (
+            {
+                EVENT_TYPE_VALUE_UPDATED: self._on_value_updated,
+                EVENT_TYPE_ANOMALY_DETECTED: self._on_anomaly_detected,
+                EVENT_TYPE_AI_ANALYZED: self._on_ai_analyzed,
+            }.get(msg_type)
+            if isinstance(msg_type, str)
+            else None
+        )
+        if handler is not None:
+            try:
+                handler(data)
+            except Exception:  # noqa: BLE001 - one bad event must not drop the socket
+                _LOGGER.debug("Ignoring malformed HydroNode event or failed listener")
 
     @staticmethod
     def _safe_json(msg: aiohttp.WSMessage) -> dict[str, Any] | None:
         try:
-            return json.loads(msg.data)
-        except (TypeError, ValueError, json.JSONDecodeError):
-            _LOGGER.debug("Ignoring non-JSON HydroNode WS message: %r", msg.data)
+            result = json.loads(msg.data)
+            return result if isinstance(result, dict) else None
+        except (TypeError, ValueError, RecursionError):
+            _LOGGER.debug("Ignoring invalid HydroNode WS message")
             return None

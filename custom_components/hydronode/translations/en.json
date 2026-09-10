@@ -15,16 +15,26 @@
         "data": {
           "token": "Personal Access Token"
         }
+      },
+      "reconfigure": {
+        "title": "Change HydroNode address",
+        "description": "Enter https://hydronode.tech to switch domains. Your saved token is reused and the account is verified.",
+        "data": {
+          "base_url": "Base URL"
+        }
       }
     },
     "error": {
       "invalid_auth": "Invalid or revoked token.",
       "cannot_connect": "Could not reach the HydroNode server.",
-      "unknown": "Unexpected error."
+      "unknown": "Unexpected error.",
+      "invalid_url": "Invalid base URL. Use HTTPS without credentials, query parameters or fragments."
     },
     "abort": {
       "already_configured": "This HydroNode account is already configured.",
-      "reauth_successful": "Reconnected to HydroNode successfully."
+      "reauth_successful": "Reconnected to HydroNode successfully.",
+      "wrong_account": "The token belongs to a different HydroNode account.",
+      "reconfigure_successful": "HydroNode address updated successfully."
     }
   },
   "options": {
@@ -36,6 +46,51 @@
           "include_followed": "Include followed public stations",
           "fire_value_events": "Fire an event bus event on every value update"
         }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "air_quality_score": {
+        "name": "Air quality"
+      },
+      "environment_score": {
+        "name": "Environment"
+      },
+      "confidence": {
+        "name": "Analysis confidence"
+      },
+      "alert_severity": {
+        "name": "Alert severity",
+        "state": {
+          "NONE": "None",
+          "LOW": "Low",
+          "MEDIUM": "Medium",
+          "HIGH": "High",
+          "CRITICAL": "Critical"
+        }
+      },
+      "anomaly_type": {
+        "name": "Anomaly type",
+        "state": {
+          "SPIKE": "Spike",
+          "DROP": "Drop",
+          "DRIFT": "Drift",
+          "GRADUAL_DRIFT": "Gradual drift",
+          "THRESHOLD_BREACH": "Threshold breach",
+          "PERIODIC_REVIEW": "Periodic review"
+        }
+      },
+      "analysis_timestamp": {
+        "name": "Last analysis"
+      }
+    },
+    "binary_sensor": {
+      "ventilation_event": {
+        "name": "Ventilation event"
+      },
+      "alert": {
+        "name": "Alert"
       }
     }
   }
