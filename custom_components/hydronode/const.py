@@ -614,14 +614,15 @@ SENSOR_TYPE_NAMES: dict[str, str] = {
 # writes it any more, but older rows and the web client's union type still carry it.
 # The column is a free-form String, so extend this list when the backend gains a type;
 # an unlisted value is logged and reported as unknown instead of breaking the enum.
+# HA enum states and translation keys use lowercase; wire payloads stay unchanged.
 ANOMALY_TYPE_OPTIONS: list[str] = [
-    "SPIKE",
-    "DROP",
-    "DRIFT",
-    "GRADUAL_DRIFT",
-    "THRESHOLD_BREACH",
-    "PERIODIC_REVIEW",
+    "spike",
+    "drop",
+    "drift",
+    "gradual_drift",
+    "threshold_breach",
+    "periodic_review",
 ]
 
 # Fixed by the AI prompt in AnomalyAiScheduler ("NONE|LOW|MEDIUM|HIGH|CRITICAL").
-ALERT_SEVERITY_OPTIONS: list[str] = ["NONE", "LOW", "MEDIUM", "HIGH", "CRITICAL"]
+ALERT_SEVERITY_OPTIONS: list[str] = ["none", "low", "medium", "high", "critical"]

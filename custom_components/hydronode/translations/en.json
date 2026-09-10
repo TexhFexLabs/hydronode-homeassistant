@@ -18,7 +18,7 @@
       },
       "reconfigure": {
         "title": "Change HydroNode address",
-        "description": "Enter https://hydronode.tech to switch domains. Your saved token is reused and the account is verified.",
+        "description": "Enter {base_url} to switch domains. Your saved token is reused and the account is verified.",
         "data": {
           "base_url": "Base URL"
         }
@@ -63,22 +63,22 @@
       "alert_severity": {
         "name": "Alert severity",
         "state": {
-          "NONE": "None",
-          "LOW": "Low",
-          "MEDIUM": "Medium",
-          "HIGH": "High",
-          "CRITICAL": "Critical"
+          "none": "None",
+          "low": "Low",
+          "medium": "Medium",
+          "high": "High",
+          "critical": "Critical"
         }
       },
       "anomaly_type": {
         "name": "Anomaly type",
         "state": {
-          "SPIKE": "Spike",
-          "DROP": "Drop",
-          "DRIFT": "Drift",
-          "GRADUAL_DRIFT": "Gradual drift",
-          "THRESHOLD_BREACH": "Threshold breach",
-          "PERIODIC_REVIEW": "Periodic review"
+          "spike": "Spike",
+          "drop": "Drop",
+          "drift": "Drift",
+          "gradual_drift": "Gradual drift",
+          "threshold_breach": "Threshold breach",
+          "periodic_review": "Periodic review"
         }
       },
       "analysis_timestamp": {

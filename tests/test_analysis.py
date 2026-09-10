@@ -117,8 +117,8 @@ async def test_ai_analysis_push_populates_analysis_entities(hass, aioclient_mock
         "air_quality_score": "90.0",
         "environment_score": "80.0",
         "confidence": "70.0",
-        "alert_severity": "MEDIUM",
-        "anomaly_type": "DRIFT",
+        "alert_severity": "medium",
+        "anomaly_type": "drift",
     }
     for key, value in expected_sensors.items():
         entity_id = _entity_id(hass, "sensor", key)
@@ -166,7 +166,7 @@ async def test_unknown_anomaly_type_is_reported_as_unknown(hass, aioclient_mock)
     )
     # An unusable enum value must not take the rest of the payload down with it.
     assert (
-        hass.states.get(_entity_id(hass, "sensor", "alert_severity")).state == "MEDIUM"
+        hass.states.get(_entity_id(hass, "sensor", "alert_severity")).state == "medium"
     )
 
 
@@ -185,7 +185,7 @@ async def test_plain_anomaly_event_leaves_analysis_untouched(hass, aioclient_moc
     assert (
         hass.states.get(_entity_id(hass, "sensor", "air_quality_score")).state == "90.0"
     )
-    assert hass.states.get(_entity_id(hass, "sensor", "anomaly_type")).state == "DRIFT"
+    assert hass.states.get(_entity_id(hass, "sensor", "anomaly_type")).state == "drift"
 
 
 async def test_analysis_survives_a_reload(hass, aioclient_mock):
@@ -206,7 +206,7 @@ async def test_analysis_survives_a_reload(hass, aioclient_mock):
         hass.states.get(_entity_id(hass, "sensor", "air_quality_score")).state == "90.0"
     )
     assert (
-        hass.states.get(_entity_id(hass, "sensor", "alert_severity")).state == "MEDIUM"
+        hass.states.get(_entity_id(hass, "sensor", "alert_severity")).state == "medium"
     )
     assert hass.states.get(_entity_id(hass, "binary_sensor", "alert")).state == "on"
     assert (
@@ -263,7 +263,7 @@ async def test_every_declared_anomaly_type_renders(hass, aioclient_mock):
     entity_id = None
 
     for anomaly_type in ANOMALY_TYPE_OPTIONS:
-        on_ai_analyzed({**AI_ANALYZED, "anomalyType": anomaly_type})
+        on_ai_analyzed({**AI_ANALYZED, "anomalyType": anomaly_type.upper()})
         await hass.async_block_till_done()
         entity_id = entity_id or _entity_id(hass, "sensor", "anomaly_type")
         assert hass.states.get(entity_id).state == anomaly_type
@@ -279,7 +279,7 @@ async def test_every_declared_alert_severity_renders(hass, aioclient_mock):
 
     for severity in ALERT_SEVERITY_OPTIONS:
         payload = {**AI_ANALYZED, "analysis": {**AI_ANALYZED["analysis"]}}
-        payload["analysis"]["alert_severity"] = severity
+        payload["analysis"]["alert_severity"] = severity.upper()
         on_ai_analyzed(payload)
         await hass.async_block_till_done()
         entity_id = entity_id or _entity_id(hass, "sensor", "alert_severity")
@@ -326,7 +326,7 @@ async def test_out_of_order_analysis_is_ignored(hass, aioclient_mock):
         {**AI_ANALYZED, "timestamp": "2026-09-09T10:00:00Z", "anomalyType": "SPIKE"}
     )
     await hass.async_block_till_done()
-    assert hass.states.get(_entity_id(hass, "sensor", "anomaly_type")).state == "DRIFT"
+    assert hass.states.get(_entity_id(hass, "sensor", "anomaly_type")).state == "drift"
 
 
 def test_scores_reject_non_finite_and_out_of_range_values():
@@ -335,3 +335,42 @@ def test_scores_reject_non_finite_and_out_of_range_values():
     score = score_percent("confidence")
     for value in (float("nan"), float("inf"), True, -0.1, 1.1, 10**400):
         assert score({"analysis": {"confidence": value}}) is None
+
+
+async def test_legacy_enum_restore_normalizes_uppercase():
+    """Older local installations may have uppercase enum values in their restore cache."""
+    from types import SimpleNamespace
+
+    from custom_components.hydronode.analysis import HydroNodeAnalysisStore
+    from custom_components.hydronode.sensor import (
+        ANALYSIS_SENSORS,
+        HydroNodeAnalysisSensor,
+    )
+
+    description = next(
+        item for item in ANALYSIS_SENSORS if item.key == "alert_severity"
+    )
+    entity = HydroNodeAnalysisSensor(
+        HydroNodeAnalysisStore(), BOOTSTRAP["stations"][0], description
+    )
+    with (
+        patch(
+            "custom_components.hydronode.analysis.HydroNodeAnalysisEntity.async_added_to_hass",
+            new_callable=AsyncMock,
+        ),
+        patch.object(
+            entity,
+            "async_get_last_sensor_data",
+            new_callable=AsyncMock,
+            return_value=SimpleNamespace(native_value="MEDIUM"),
+        ),
+    ):
+        await entity.async_added_to_hass()
+    assert entity.native_value == "medium"
+
+
+def test_enum_translation_keys_follow_hassfest_contract():
+    import re
+
+    for option in ANOMALY_TYPE_OPTIONS + ALERT_SEVERITY_OPTIONS:
+        assert re.fullmatch(r"[a-z0-9]+(?:[_-][a-z0-9]+)*", option)

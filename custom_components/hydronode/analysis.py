@@ -109,7 +109,7 @@ def enum_value(
         raw = read(data)
         if raw is None:
             return None
-        text = str(raw)
+        text = str(raw).lower()
         if text not in options:
             _LOGGER.debug("Unknown HydroNode %s", label)
             return None

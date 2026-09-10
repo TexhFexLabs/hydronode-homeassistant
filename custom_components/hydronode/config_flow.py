@@ -190,7 +190,10 @@ class HydroNodeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             }
         )
         return self.async_show_form(
-            step_id="reconfigure", data_schema=schema, errors=errors
+            step_id="reconfigure",
+            data_schema=schema,
+            errors=errors,
+            description_placeholders={CONF_BASE_URL: DEFAULT_BASE_URL},
         )
 
     @staticmethod

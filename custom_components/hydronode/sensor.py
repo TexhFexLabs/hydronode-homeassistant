@@ -331,7 +331,12 @@ class HydroNodeAnalysisSensor(HydroNodeAnalysisEntity, RestoreSensor):
             return
         last_data = await self.async_get_last_sensor_data()
         if last_data is not None:
-            self._restored_value = last_data.native_value
+            value = last_data.native_value
+            if self.entity_description.device_class == SensorDeviceClass.ENUM:
+                value = str(value).lower() if value is not None else None
+                if value not in (self.entity_description.options or []):
+                    value = None
+            self._restored_value = value
 
     @callback
     def _clear_restored(self) -> None:

@@ -18,7 +18,7 @@
       },
       "reconfigure": {
         "title": "HydroNode-Adresse ändern",
-        "description": "Für den Domainwechsel https://hydronode.tech eintragen. Dein gespeicherter Token wird verwendet und das Konto geprüft.",
+        "description": "Für den Domainwechsel {base_url} eintragen. Dein gespeicherter Token wird verwendet und das Konto geprüft.",
         "data": {
           "base_url": "Basis-URL"
         }
@@ -63,22 +63,22 @@
       "alert_severity": {
         "name": "Alarmstufe",
         "state": {
-          "NONE": "Keine",
-          "LOW": "Niedrig",
-          "MEDIUM": "Mittel",
-          "HIGH": "Hoch",
-          "CRITICAL": "Kritisch"
+          "none": "Keine",
+          "low": "Niedrig",
+          "medium": "Mittel",
+          "high": "Hoch",
+          "critical": "Kritisch"
         }
       },
       "anomaly_type": {
         "name": "Anomalietyp",
         "state": {
-          "SPIKE": "Ausschlag nach oben",
-          "DROP": "Einbruch",
-          "DRIFT": "Drift",
-          "GRADUAL_DRIFT": "Langsame Drift",
-          "THRESHOLD_BREACH": "Grenzwertüberschreitung",
-          "PERIODIC_REVIEW": "Regelmäßige Prüfung"
+          "spike": "Ausschlag nach oben",
+          "drop": "Einbruch",
+          "drift": "Drift",
+          "gradual_drift": "Langsame Drift",
+          "threshold_breach": "Grenzwertüberschreitung",
+          "periodic_review": "Regelmäßige Prüfung"
         }
       },
       "analysis_timestamp": {

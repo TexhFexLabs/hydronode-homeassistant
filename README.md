@@ -130,7 +130,9 @@ re-add the integration.
   matching `device_class`/`unit_of_measurement`/`state_class`. Unknown types still work as plain
   numeric sensors.
 - **Analysis sensors** (`sensor.*`) — air quality, environment score, analysis confidence,
-  alert severity, anomaly type and last analysis timestamp for each station.
+  alert severity, anomaly type and last analysis timestamp for each station. Enum sensor
+  states use lowercase values (for example `medium` and `drift`); event payloads retain
+  the backend's original values.
 - **Analysis binary sensors** (`binary_sensor.*`) — ventilation event and alert flags.
   Analysis entities retain their last values across restarts. A new installation receives
   its first values with the next AI-analysis event; these values are not fetched by REST.
