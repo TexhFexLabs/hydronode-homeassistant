@@ -9,7 +9,7 @@ import aiohttp
 import pytest
 from pytest_homeassistant_custom_component.common import async_capture_events
 
-from custom_components.hydronode.const import EVENT_ANOMALY
+from custom_components.hydronode.const import EVENT_INCIDENT
 from custom_components.hydronode.coordinator import HydroNodeCoordinator
 from custom_components.hydronode.ws import (
     HydroNodeWebSocketClient,
@@ -96,8 +96,8 @@ def _make_client(session, **overrides):
         base_url="https://hydronode.example.com",
         token="hat_test",
         on_value_updated=lambda data: None,
-        on_anomaly_detected=lambda data: None,
-        on_ai_analyzed=lambda data: None,
+        on_incident_updated=lambda data: None,
+        on_analysis_completed=lambda data: None,
         on_auth_failed=lambda: None,
     )
     kwargs.update(overrides)
@@ -133,25 +133,25 @@ async def test_connect_once_sends_auth_and_dispatches_value_update(hass):
 
 async def test_dispatch_routes_all_message_types(hass):
     """_dispatch() routes each envelope type to its matching callback."""
-    seen: dict[str, dict | None] = {"value": None, "anomaly": None, "ai": None}
+    seen: dict[str, dict | None] = {"value": None, "incident": None, "analysis": None}
     client = _make_client(
         FakeSession(FakeWebSocket([])),
         hass=hass,
         on_value_updated=lambda data: seen.__setitem__("value", data),
-        on_anomaly_detected=lambda data: seen.__setitem__("anomaly", data),
-        on_ai_analyzed=lambda data: seen.__setitem__("ai", data),
+        on_incident_updated=lambda data: seen.__setitem__("incident", data),
+        on_analysis_completed=lambda data: seen.__setitem__("analysis", data),
     )
 
     client._dispatch(_envelope("value.updated", {"sensorId": "s1"}))
-    client._dispatch(_envelope("anomaly.detected", {"anomalyId": "a1"}))
+    client._dispatch(_envelope("incident.updated", {"incidentId": "i1"}))
     client._dispatch(
-        _envelope("anomaly.ai_analyzed", {"anomalyId": "a1", "provider": "x"})
+        _envelope("analysis.completed", {"analysisId": "a1", "source": "LLM"})
     )
     client._dispatch(_envelope("some.unknown.type", {"foo": "bar"}))
 
     assert seen["value"] == {"sensorId": "s1"}
-    assert seen["anomaly"] == {"anomalyId": "a1"}
-    assert seen["ai"] == {"anomalyId": "a1", "provider": "x"}
+    assert seen["incident"] == {"incidentId": "i1"}
+    assert seen["analysis"] == {"analysisId": "a1", "source": "LLM"}
 
 
 async def test_dispatch_ignores_non_json_payload(hass):
@@ -203,10 +203,10 @@ async def test_run_loop_calls_on_auth_failed_and_stops(hass):
     assert auth_failed_calls == [True]
 
 
-async def test_value_updated_dispatch_updates_coordinator_and_anomaly_fires_bus_event(
+async def test_value_updated_dispatch_updates_coordinator_and_incident_fires_bus_event(
     hass,
 ):
-    """End-to-end wiring: value.updated patches the coordinator; anomaly fires the HA bus."""
+    """End-to-end wiring: value.updated patches the coordinator; incident fires the HA bus."""
     mock_client = AsyncMock()
     mock_client.states.return_value = [
         {
@@ -221,19 +221,19 @@ async def test_value_updated_dispatch_updates_coordinator_and_anomaly_fires_bus_
     coordinator = HydroNodeCoordinator(hass, mock_client, poll_interval=60)
     await coordinator.async_refresh()
 
-    events = async_capture_events(hass, EVENT_ANOMALY)
+    events = async_capture_events(hass, EVENT_INCIDENT)
 
     def on_value_updated(data: dict) -> None:
         coordinator.apply_ws_value_update(data)
 
-    def on_anomaly_detected(data: dict) -> None:
-        hass.bus.async_fire(EVENT_ANOMALY, data)
+    def on_incident_updated(data: dict) -> None:
+        hass.bus.async_fire(EVENT_INCIDENT, data)
 
     ws_client = _make_client(
         FakeSession(FakeWebSocket([])),
         hass=hass,
         on_value_updated=on_value_updated,
-        on_anomaly_detected=on_anomaly_detected,
+        on_incident_updated=on_incident_updated,
     )
 
     ws_client._dispatch(
@@ -252,14 +252,14 @@ async def test_value_updated_dispatch_updates_coordinator_and_anomaly_fires_bus_
 
     ws_client._dispatch(
         _envelope(
-            "anomaly.detected",
-            {"anomalyId": "a1", "sensorId": "s1", "stationId": "st1"},
+            "incident.updated",
+            {"incidentId": "i1", "sensorId": "s1", "stationId": "st1"},
         )
     )
     await hass.async_block_till_done()
 
     assert len(events) == 1
-    assert events[0].data["anomalyId"] == "a1"
+    assert events[0].data["incidentId"] == "i1"
 
 
 @pytest.mark.parametrize(

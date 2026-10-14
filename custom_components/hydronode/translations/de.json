@@ -51,46 +51,71 @@
   },
   "entity": {
     "sensor": {
-      "air_quality_score": {
-        "name": "Luftgüte"
+      "incidents_open": {
+        "name": "Offene Vorgänge"
       },
-      "environment_score": {
-        "name": "Umgebung"
-      },
-      "confidence": {
-        "name": "Konfidenz der Analyse"
-      },
-      "alert_severity": {
-        "name": "Alarmstufe",
+      "incident_severity": {
+        "name": "Schwere der Vorgänge",
         "state": {
           "none": "Keine",
-          "low": "Niedrig",
-          "medium": "Mittel",
+          "info": "Info",
+          "warning": "Warnung",
           "high": "Hoch",
           "critical": "Kritisch"
         }
       },
-      "anomaly_type": {
-        "name": "Anomalietyp",
+      "analysis": {
+        "name": "Analyse",
         "state": {
-          "spike": "Ausschlag nach oben",
-          "drop": "Einbruch",
-          "drift": "Drift",
-          "gradual_drift": "Langsame Drift",
-          "threshold_breach": "Grenzwertüberschreitung",
-          "periodic_review": "Regelmäßige Prüfung"
+          "none": "Keine",
+          "info": "Info",
+          "warning": "Warnung",
+          "high": "Hoch",
+          "critical": "Kritisch"
         }
       },
-      "analysis_timestamp": {
-        "name": "Letzte Analyse"
+      "sensor_analysis": {
+        "name": "{sensor_name} Analyse",
+        "state": {
+          "none": "Keine",
+          "info": "Info",
+          "warning": "Warnung",
+          "high": "Hoch",
+          "critical": "Kritisch"
+        }
+      },
+      "air_quality_index": {
+        "name": "Luftqualitätsindex"
+      },
+      "sensor_air_quality_index": {
+        "name": "{sensor_name} Luftqualitätsindex"
+      },
+      "analysis_time": {
+        "name": "Analysezeit"
+      },
+      "sensor_analysis_time": {
+        "name": "{sensor_name} Analysezeit"
       }
     },
     "binary_sensor": {
-      "ventilation_event": {
-        "name": "Lüftungsereignis"
-      },
-      "alert": {
-        "name": "Alarm"
+      "incident": {
+        "name": "Vorgang"
+      }
+    },
+    "event": {
+      "events": {
+        "name": "Ereignisse",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "incident_opened": "Vorgang eröffnet",
+              "incident_escalated": "Vorgang verschärft",
+              "incident_recovered": "Vorgang erholt",
+              "incident_closed": "Vorgang geschlossen",
+              "analysis_ready": "Analyse fertig"
+            }
+          }
+        }
       }
     }
   }

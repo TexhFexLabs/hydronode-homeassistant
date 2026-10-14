@@ -38,4 +38,5 @@ async def async_get_config_entry_diagnostics(
         if runtime_data
         else None,
         "states_count": len(runtime_data.coordinator.data or {}) if runtime_data else 0,
+        "insights": runtime_data.insights.diagnostics() if runtime_data else None,
     }

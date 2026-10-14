@@ -51,46 +51,71 @@
   },
   "entity": {
     "sensor": {
-      "air_quality_score": {
-        "name": "Air quality"
+      "incidents_open": {
+        "name": "Open incidents"
       },
-      "environment_score": {
-        "name": "Environment"
-      },
-      "confidence": {
-        "name": "Analysis confidence"
-      },
-      "alert_severity": {
-        "name": "Alert severity",
+      "incident_severity": {
+        "name": "Incident severity",
         "state": {
           "none": "None",
-          "low": "Low",
-          "medium": "Medium",
+          "info": "Info",
+          "warning": "Warning",
           "high": "High",
           "critical": "Critical"
         }
       },
-      "anomaly_type": {
-        "name": "Anomaly type",
+      "analysis": {
+        "name": "Analysis",
         "state": {
-          "spike": "Spike",
-          "drop": "Drop",
-          "drift": "Drift",
-          "gradual_drift": "Gradual drift",
-          "threshold_breach": "Threshold breach",
-          "periodic_review": "Periodic review"
+          "none": "None",
+          "info": "Info",
+          "warning": "Warning",
+          "high": "High",
+          "critical": "Critical"
         }
       },
-      "analysis_timestamp": {
-        "name": "Last analysis"
+      "sensor_analysis": {
+        "name": "{sensor_name} analysis",
+        "state": {
+          "none": "None",
+          "info": "Info",
+          "warning": "Warning",
+          "high": "High",
+          "critical": "Critical"
+        }
+      },
+      "air_quality_index": {
+        "name": "Air quality index"
+      },
+      "sensor_air_quality_index": {
+        "name": "{sensor_name} air quality index"
+      },
+      "analysis_time": {
+        "name": "Analysis time"
+      },
+      "sensor_analysis_time": {
+        "name": "{sensor_name} analysis time"
       }
     },
     "binary_sensor": {
-      "ventilation_event": {
-        "name": "Ventilation event"
-      },
-      "alert": {
-        "name": "Alert"
+      "incident": {
+        "name": "Incident"
+      }
+    },
+    "event": {
+      "events": {
+        "name": "Events",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "incident_opened": "Incident opened",
+              "incident_escalated": "Incident escalated",
+              "incident_recovered": "Incident recovered",
+              "incident_closed": "Incident closed",
+              "analysis_ready": "Analysis ready"
+            }
+          }
+        }
       }
     }
   }

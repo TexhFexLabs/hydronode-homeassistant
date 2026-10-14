@@ -1,21 +1,21 @@
-"""Event platform for HydroNode — one event entity per station device."""
+"""Event platform for HydroNode: one event entity per station device."""
 
 from __future__ import annotations
 
-import logging
 from typing import Any
 
 from homeassistant.components.event import EventEntity
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import HydroNodeConfigEntry
-from .const import CONF_INCLUDE_FOLLOWED, DEFAULT_INCLUDE_FOLLOWED, DOMAIN, MANUFACTURER
-
-_LOGGER = logging.getLogger(__name__)
-
-EVENT_TYPES = ["anomaly", "ai_analysis"]
+from .const import CONF_INCLUDE_FOLLOWED, DEFAULT_INCLUDE_FOLLOWED
+from .insights import (
+    EVENT_TYPES,
+    KEY_EVENTS,
+    station_device_info,
+    station_unique_id,
+)
 
 
 async def async_setup_entry(
@@ -58,37 +58,25 @@ async def async_setup_entry(
 
 
 class HydroNodeEventEntity(EventEntity):
-    """Fires `anomaly` / `ai_analysis` events for a single station device."""
+    """Fires incident and analysis events for a single station device."""
 
     _attr_has_entity_name = True
-    _attr_name = "Events"
+    _attr_translation_key = KEY_EVENTS
     _attr_event_types = EVENT_TYPES
     _attr_should_poll = False
 
     def __init__(self, station: dict[str, Any]) -> None:
         self._station_id: str = station["id"]
-        self._attr_unique_id = f"{self._station_id}_events"
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, self._station_id)},
-            name=station.get("name") or "HydroNode Station",
-            manufacturer=MANUFACTURER,
-        )
+        self._attr_unique_id = station_unique_id(self._station_id, KEY_EVENTS)
+        self._attr_device_info = station_device_info(station)
 
     @callback
-    def handle_event(self, event_type: str, data: dict[str, Any]) -> None:
-        """Dispatch an incoming anomaly/ai_analysis payload if it targets this station.
-
-        A sensor without a station is represented by a pseudo-station whose id
-        equals the sensor id, so when `stationId` is null we fall back to
-        `sensorId` to still match the right device.
-        """
-        if event_type not in EVENT_TYPES:
+    def handle_event(
+        self, station_id: str, event_type: str, attributes: dict[str, Any]
+    ) -> None:
+        """Trigger an event if it belongs to this station's device."""
+        if station_id != self._station_id or event_type not in EVENT_TYPES:
             return
-
-        effective_station_id = data.get("stationId") or data.get("sensorId")
-        if effective_station_id != self._station_id:
-            return
-
-        self._trigger_event(event_type, data)
+        self._trigger_event(event_type, attributes)
         if self.hass is not None:
             self.async_write_ha_state()

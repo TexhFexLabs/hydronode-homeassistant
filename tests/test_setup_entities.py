@@ -60,6 +60,7 @@ async def test_setup_entry_creates_device_and_entities(hass, aioclient_mock):
     ]
     aioclient_mock.get(f"{BASE_URL}/api/ha/v1/bootstrap", json=BOOTSTRAP)
     aioclient_mock.get(f"{BASE_URL}/api/ha/v1/states", json=states)
+    aioclient_mock.get(f"{BASE_URL}/api/ha/v1/insights", json={"stations": []})
 
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -149,6 +150,7 @@ async def test_unfollowed_station_is_removed_on_bootstrap_refresh(hass, aioclien
     ]
     aioclient_mock.get(f"{BASE_URL}/api/ha/v1/bootstrap", json=two_stations)
     aioclient_mock.get(f"{BASE_URL}/api/ha/v1/states", json=states)
+    aioclient_mock.get(f"{BASE_URL}/api/ha/v1/insights", json={"stations": []})
 
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -193,6 +195,7 @@ async def test_unfollowed_station_is_removed_on_bootstrap_refresh(hass, aioclien
     aioclient_mock.clear_requests()
     aioclient_mock.get(f"{BASE_URL}/api/ha/v1/bootstrap", json=BOOTSTRAP)
     aioclient_mock.get(f"{BASE_URL}/api/ha/v1/states", json=[])
+    aioclient_mock.get(f"{BASE_URL}/api/ha/v1/insights", json={"stations": []})
 
     coordinator = entry.runtime_data.coordinator
     await coordinator.async_refresh_bootstrap()
