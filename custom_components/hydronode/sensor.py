@@ -5,42 +5,24 @@ from __future__ import annotations
 import logging
 import math
 from collections import Counter
-from collections.abc import Callable
-from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any
 
 from homeassistant.components.sensor import (
     RestoreSensor,
     SensorDeviceClass,
     SensorEntity,
-    SensorEntityDescription,
     SensorStateClass,
 )
-from homeassistant.const import PERCENTAGE
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
 from . import HydroNodeConfigEntry
-from .analysis import (
-    KEY_AIR_QUALITY_SCORE,
-    KEY_ALERT_SEVERITY,
-    KEY_ANALYSIS_TIMESTAMP,
-    KEY_ANOMALY_TYPE,
-    KEY_CONFIDENCE,
-    KEY_ENVIRONMENT_SCORE,
-    HydroNodeAnalysisEntity,
-    HydroNodeAnalysisStore,
-    analysis_timestamp,
-    enum_value,
-    score_percent,
-)
 from .const import (
-    ALERT_SEVERITY_OPTIONS,
-    ANOMALY_TYPE_OPTIONS,
     CONF_INCLUDE_FOLLOWED,
     DEFAULT_INCLUDE_FOLLOWED,
     DEFAULT_SCALE,
@@ -52,71 +34,23 @@ from .const import (
     STALE_TIMEOUT_SECONDS,
 )
 from .coordinator import HydroNodeCoordinator, StateKey, build_unique_id
+from .insights import (
+    KEY_AIR_QUALITY_INDEX,
+    KEY_ANALYSIS,
+    KEY_ANALYSIS_TIME,
+    KEY_INCIDENT_SEVERITY,
+    KEY_INCIDENTS_OPEN,
+    SENSOR_ENTITY_KEYS,
+    SEVERITY_NONE,
+    SEVERITY_OPTIONS,
+    HydroNodeInsightsEntity,
+    HydroNodeInsightsStore,
+    incident_summary,
+    sensor_unique_id,
+    station_unique_id,
+)
 
 _LOGGER = logging.getLogger(__name__)
-
-
-@dataclass(frozen=True, kw_only=True)
-class HydroNodeAnalysisSensorDescription(SensorEntityDescription):
-    """Describes one analysis field rendered as a sensor."""
-
-    value_fn: Callable[[dict[str, Any]], Any]
-
-
-ANALYSIS_SENSORS: tuple[HydroNodeAnalysisSensorDescription, ...] = (
-    HydroNodeAnalysisSensorDescription(
-        key=KEY_AIR_QUALITY_SCORE,
-        translation_key=KEY_AIR_QUALITY_SCORE,
-        native_unit_of_measurement=PERCENTAGE,
-        state_class=SensorStateClass.MEASUREMENT,
-        suggested_display_precision=0,
-        value_fn=score_percent("air_quality_score"),
-    ),
-    HydroNodeAnalysisSensorDescription(
-        key=KEY_ENVIRONMENT_SCORE,
-        translation_key=KEY_ENVIRONMENT_SCORE,
-        native_unit_of_measurement=PERCENTAGE,
-        state_class=SensorStateClass.MEASUREMENT,
-        suggested_display_precision=0,
-        value_fn=score_percent("environment_score"),
-    ),
-    HydroNodeAnalysisSensorDescription(
-        key=KEY_CONFIDENCE,
-        translation_key=KEY_CONFIDENCE,
-        native_unit_of_measurement=PERCENTAGE,
-        state_class=SensorStateClass.MEASUREMENT,
-        suggested_display_precision=0,
-        value_fn=score_percent("confidence"),
-    ),
-    HydroNodeAnalysisSensorDescription(
-        key=KEY_ALERT_SEVERITY,
-        translation_key=KEY_ALERT_SEVERITY,
-        device_class=SensorDeviceClass.ENUM,
-        options=ALERT_SEVERITY_OPTIONS,
-        value_fn=enum_value(
-            lambda data: (data.get("analysis") or {}).get("alert_severity"),
-            ALERT_SEVERITY_OPTIONS,
-            "alert severity",
-        ),
-    ),
-    HydroNodeAnalysisSensorDescription(
-        key=KEY_ANOMALY_TYPE,
-        translation_key=KEY_ANOMALY_TYPE,
-        device_class=SensorDeviceClass.ENUM,
-        options=ANOMALY_TYPE_OPTIONS,
-        value_fn=enum_value(
-            lambda data: data.get("anomalyType"),
-            ANOMALY_TYPE_OPTIONS,
-            "anomaly type",
-        ),
-    ),
-    HydroNodeAnalysisSensorDescription(
-        key=KEY_ANALYSIS_TIMESTAMP,
-        translation_key=KEY_ANALYSIS_TIMESTAMP,
-        device_class=SensorDeviceClass.TIMESTAMP,
-        value_fn=analysis_timestamp,
-    ),
-)
 
 
 async def async_setup_entry(
@@ -126,9 +60,50 @@ async def async_setup_entry(
 ) -> None:
     """Set up HydroNode sensor entities and wire up dynamic discovery."""
     coordinator = entry.runtime_data.coordinator
-    analysis_store = entry.runtime_data.analysis_store
+    insights = entry.runtime_data.insights
+    entity_registry = er.async_get(hass)
     known_keys: set[StateKey] = set()
-    known_analysis_stations: set[str] = set()
+    known_insight_stations: set[str] = set()
+    known_analysis_ids: set[str] = set()
+
+    def _included_stations() -> list[dict[str, Any]]:
+        return coordinator.filter_stations(
+            coordinator.bootstrap,
+            entry.options.get(CONF_INCLUDE_FOLLOWED, DEFAULT_INCLUDE_FOLLOWED),
+        )
+
+    @callback
+    def _add_analysis_entities() -> None:
+        """Create per-sensor analysis entities once a sensor has an analysis.
+
+        Entities already in the registry are recreated at startup even before
+        their analysis is known again, so they restore their last value.
+        """
+        new_entities: list[SensorEntity] = []
+        valid_ids: set[str] = set()
+        for station in _included_stations():
+            for sensor in station.get("sensors", []):
+                analysis = insights.analysis(station["id"], sensor["id"])
+                for key in SENSOR_ENTITY_KEYS:
+                    unique_id = sensor_unique_id(station["id"], sensor["id"], key)
+                    valid_ids.add(unique_id)
+                    if unique_id in known_analysis_ids:
+                        continue
+                    wanted = (
+                        analysis is not None
+                        and (key != KEY_AIR_QUALITY_INDEX or analysis["air_quality"])
+                    ) or entity_registry.async_get_entity_id(
+                        "sensor", DOMAIN, unique_id
+                    )
+                    if not wanted:
+                        continue
+                    known_analysis_ids.add(unique_id)
+                    new_entities.append(
+                        HydroNodeAnalysisSensor(insights, station, sensor, key)
+                    )
+        known_analysis_ids.intersection_update(valid_ids)
+        if new_entities:
+            async_add_entities(new_entities)
 
     @callback
     def _add_from_bootstrap(bootstrap: dict[str, Any]) -> None:
@@ -140,11 +115,13 @@ async def async_setup_entry(
         current_stations: set[str] = set()
         for station in coordinator.filter_stations(bootstrap, include_followed):
             current_stations.add(station["id"])
-            if station["id"] not in known_analysis_stations:
-                known_analysis_stations.add(station["id"])
+            if station["id"] not in known_insight_stations:
+                known_insight_stations.add(station["id"])
                 new_entities.extend(
-                    HydroNodeAnalysisSensor(analysis_store, station, description)
-                    for description in ANALYSIS_SENSORS
+                    (
+                        HydroNodeOpenIncidentsSensor(insights, station),
+                        HydroNodeIncidentSeveritySensor(insights, station),
+                    )
                 )
             for sensor in station.get("sensors", []):
                 # Two channels of the same type on one sensor would collide on the
@@ -175,12 +152,14 @@ async def async_setup_entry(
         # renamed channel) so a later re-follow re-creates the entity. The stale
         # entity itself is removed from the registry by _async_sync_registries.
         known_keys.intersection_update(current_keys)
-        known_analysis_stations.intersection_update(current_stations)
+        known_insight_stations.intersection_update(current_stations)
         if new_entities:
             async_add_entities(new_entities)
+        _add_analysis_entities()
 
     _add_from_bootstrap(coordinator.bootstrap)
     entry.async_on_unload(coordinator.add_new_entity_listener(_add_from_bootstrap))
+    entry.async_on_unload(insights.async_add_analysis_listener(_add_analysis_entities))
 
 
 class HydroNodeSensorEntity(CoordinatorEntity[HydroNodeCoordinator], SensorEntity):
@@ -304,48 +283,172 @@ class HydroNodeSensorEntity(CoordinatorEntity[HydroNodeCoordinator], SensorEntit
         return dt_util.utcnow() - dt_util.as_utc(value_time) <= max_age
 
 
-class HydroNodeAnalysisSensor(HydroNodeAnalysisEntity, RestoreSensor):
-    """One field of the latest `ai_analysis` payload as a sensor."""
+class HydroNodeOpenIncidentsSensor(HydroNodeInsightsEntity, SensorEntity):
+    """Number of open incidents of a station, with a compact list as attribute."""
 
-    entity_description: HydroNodeAnalysisSensorDescription
+    _attr_translation_key = KEY_INCIDENTS_OPEN
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_icon = "mdi:alert-circle-outline"
+    # The list can be long; history only needs the count.
+    _unrecorded_attributes = frozenset({"incidents"})
+
+    def __init__(self, store: HydroNodeInsightsStore, station: dict[str, Any]) -> None:
+        super().__init__(
+            store, station, station_unique_id(station["id"], KEY_INCIDENTS_OPEN)
+        )
+
+    @property
+    def native_value(self) -> int:
+        return len(self._store.open_incidents(self._station_id))
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return {
+            "incidents": [
+                incident_summary(incident)
+                for incident in self._store.open_incidents(self._station_id)
+            ]
+        }
+
+
+class HydroNodeIncidentSeveritySensor(HydroNodeInsightsEntity, SensorEntity):
+    """Highest severity among the open incidents of a station."""
+
+    _attr_translation_key = KEY_INCIDENT_SEVERITY
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_options = SEVERITY_OPTIONS
+
+    def __init__(self, store: HydroNodeInsightsStore, station: dict[str, Any]) -> None:
+        super().__init__(
+            store, station, station_unique_id(station["id"], KEY_INCIDENT_SEVERITY)
+        )
+
+    @property
+    def native_value(self) -> str:
+        return self._store.highest_severity(self._station_id)
+
+
+# Attributes of the analysis sensor; restored across restarts with the state.
+ANALYSIS_ATTRIBUTES = (
+    "summary",
+    "findings",
+    "recommendations",
+    "generated_at",
+    "source",
+    "should_alert",
+    "environment_score",
+)
+
+
+class HydroNodeAnalysisSensor(HydroNodeInsightsEntity, RestoreSensor):
+    """One view of the newest analysis of a sensor, on its station device.
+
+    `analysis` shows the severity (texts only as attributes: HA states are capped
+    at 255 characters), `air_quality_index` the 0-100 index and `analysis_time`
+    when the analysis was generated.
+    """
+
+    _unrecorded_attributes = frozenset({"summary", "findings", "recommendations"})
 
     def __init__(
         self,
-        store: HydroNodeAnalysisStore,
+        store: HydroNodeInsightsStore,
         station: dict[str, Any],
-        description: HydroNodeAnalysisSensorDescription,
+        sensor: dict[str, Any],
+        key: str,
     ) -> None:
-        super().__init__(store, station, description.key)
-        self.entity_description = description
+        super().__init__(
+            store, station, sensor_unique_id(station["id"], sensor["id"], key)
+        )
+        self._sensor_id: str = sensor["id"]
+        self._key = key
         self._restored_value: Any = None
+        self._restored_attributes: dict[str, Any] = {}
+        # A pseudo-station is the sensor itself: no need to repeat its name.
+        if station["id"] == sensor["id"]:
+            self._attr_translation_key = key
+        else:
+            self._attr_translation_key = f"sensor_{key}"
+            self._attr_translation_placeholders = {
+                "sensor_name": sensor.get("name") or "Sensor"
+            }
+        if key == KEY_ANALYSIS:
+            self._attr_device_class = SensorDeviceClass.ENUM
+            self._attr_options = SEVERITY_OPTIONS
+            self._attr_icon = "mdi:text-box-search-outline"
+        elif key == KEY_AIR_QUALITY_INDEX:
+            self._attr_state_class = SensorStateClass.MEASUREMENT
+            self._attr_suggested_display_precision = 0
+            self._attr_icon = "mdi:air-filter"
+        elif key == KEY_ANALYSIS_TIME:
+            self._attr_device_class = SensorDeviceClass.TIMESTAMP
+
+    @property
+    def _analysis(self) -> dict[str, Any] | None:
+        return self._store.analysis(self._station_id, self._sensor_id)
 
     async def async_added_to_hass(self) -> None:
-        """Restore the last value so a restart does not blank the entity.
-
-        The analysis only arrives by WebSocket push and the backend exposes no
-        endpoint to seed it, so without this the entity would stay unknown until
-        the next analysis — which can be hours away.
-        """
+        """Restore the last value until the store knows the analysis again."""
         await super().async_added_to_hass()
-        if self.analysis is not None:
+        if self._analysis is not None:
             return
         last_data = await self.async_get_last_sensor_data()
         if last_data is not None:
             value = last_data.native_value
-            if self.entity_description.device_class == SensorDeviceClass.ENUM:
+            if self._key == KEY_ANALYSIS:
                 value = str(value).lower() if value is not None else None
-                if value not in (self.entity_description.options or []):
+                if value not in SEVERITY_OPTIONS:
                     value = None
+            elif self._key == KEY_ANALYSIS_TIME and not isinstance(value, datetime):
+                value = None
             self._restored_value = value
+        if self._key in (KEY_ANALYSIS, KEY_AIR_QUALITY_INDEX):
+            last_state = await self.async_get_last_state()
+            if last_state is not None:
+                self._restored_attributes = {
+                    name: last_state.attributes[name]
+                    for name in (*ANALYSIS_ATTRIBUTES, "band", "limiting_pollutant")
+                    if name in last_state.attributes
+                }
 
     @callback
     def _clear_restored(self) -> None:
-        self._restored_value = None
+        # Station updates also come from other sensors: keep the restored value
+        # until this sensor's own analysis is known.
+        if self._analysis is not None:
+            self._restored_value = None
+            self._restored_attributes = {}
 
     @property
     def native_value(self) -> Any:
-        """Value from the latest analysis, else the one restored across a restart."""
-        data = self.analysis
-        if data is None:
+        analysis = self._analysis
+        if analysis is None:
             return self._restored_value
-        return self.entity_description.value_fn(data)
+        if self._key == KEY_ANALYSIS:
+            return analysis["severity"] or SEVERITY_NONE
+        if self._key == KEY_AIR_QUALITY_INDEX:
+            air_quality = analysis["air_quality"]
+            return air_quality["value"] if air_quality else None
+        return analysis["generated_at"]
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        analysis = self._analysis
+        if analysis is None:
+            return self._restored_attributes or None
+        if self._key == KEY_ANALYSIS:
+            return {
+                "summary": analysis["summary"],
+                "findings": analysis["findings"],
+                "recommendations": analysis["recommendations"],
+                "generated_at": analysis["generated_at"].isoformat(),
+                "source": analysis["source"],
+                "should_alert": analysis["should_alert"],
+                "environment_score": analysis["environment_score"],
+            }
+        if self._key == KEY_AIR_QUALITY_INDEX and analysis["air_quality"]:
+            return {
+                "band": analysis["air_quality"]["band"],
+                "limiting_pollutant": analysis["air_quality"]["limiting_pollutant"],
+            }
+        return None

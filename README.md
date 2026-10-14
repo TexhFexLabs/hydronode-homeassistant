@@ -20,7 +20,7 @@
 
 Home Assistant integration for [HydroNode](https://hydronode.tech) — auto-discovered sensor
 entities for every sensor you own, that's shared with you, or that you follow, live values
-pushed over WebSocket, and anomaly / AI-analysis events on the Home Assistant event bus.
+pushed over WebSocket, and open incidents plus sensor analyses on every station device.
 
 - **Auto-discovery** — new sensors and follows show up without reconfiguration (bootstrap
   refetch every 5 minutes with the default polling interval and on WebSocket reconnect).
@@ -29,9 +29,9 @@ pushed over WebSocket, and anomaly / AI-analysis events on the Home Assistant ev
 - **Hybrid transport** — REST polling every 60 s as a reliable baseline, WebSocket push for
   immediate updates. If the WebSocket drops, polling recovers the latest measurements.
   Events during a disconnection cannot be replayed by the backend.
-- **Events, not just states** — anomaly detections and AI analyses fire on the HA event bus
-  (`hydronode_anomaly`, `hydronode_ai_analysis`) with the full set of the sensor's current values
-  attached, so automations can react directly.
+- **Incidents and analyses** — open incidents and the newest analysis per sensor are loaded
+  from `/api/ha/v1/insights` (setup, every bootstrap refresh, WebSocket reconnect) and updated
+  live. Every change also fires on the HA event bus (`hydronode_incident`, `hydronode_analysis`).
 
 ---
 
@@ -129,16 +129,23 @@ re-add the integration.
   [`const.py`](custom_components/hydronode/const.py) for the full type catalog) get the
   matching `device_class`/`unit_of_measurement`/`state_class`. Unknown types still work as plain
   numeric sensors.
-- **Analysis sensors** (`sensor.*`) — air quality, environment score, analysis confidence,
-  alert severity, anomaly type and last analysis timestamp for each station. Enum sensor
-  states use lowercase values (for example `medium` and `drift`); event payloads retain
-  the backend's original values.
-- **Analysis binary sensors** (`binary_sensor.*`) — ventilation event and alert flags.
-  Analysis entities retain their last values across restarts. A new installation receives
-  its first values with the next AI-analysis event; these values are not fetched by REST.
-- **Events** (`event.*`) — one per station device, with `event_types: ["anomaly", "ai_analysis"]`.
-  Each event's `event_data` mirrors the WebSocket payload (see below), so you can read it
-  directly in automation triggers via `trigger.event.data`.
+Per station device (a sensor without a station is its own device):
+
+| Entity | Unique ID | State |
+|---|---|---|
+| `sensor` Open incidents | `{station}_incidents_open` | number of open incidents; attribute `incidents` (sensor_name, channel, category, severity, lifecycle, since, last_seen, action_required) |
+| `sensor` Incident severity | `{station}_incident_severity` | `none`/`info`/`warning`/`high`/`critical` (highest open) |
+| `binary_sensor` Incident | `{station}_incident` | `on` while at least one incident is open (`problem`) |
+| `event` Events | `{station}_events` | event types `incident_opened`, `incident_escalated`, `incident_recovered`, `incident_closed`, `analysis_ready` |
+| `sensor` *Sensor* analysis | `{station}_{sensor}_analysis` | severity `none`…`critical`; attributes summary, findings, recommendations, generated_at, source, should_alert, environment_score |
+| `sensor` *Sensor* air quality index | `{station}_{sensor}_air_quality_index` | 0–100, attributes band, limiting_pollutant |
+| `sensor` *Sensor* analysis time | `{station}_{sensor}_analysis_time` | timestamp of the analysis |
+
+The three analysis entities appear as soon as a sensor has an analysis (the air quality index
+only when the analysis has one) and keep their last value across restarts. Long texts live in
+attributes only (HA states are capped at 255 characters). Incidents count as open in the
+lifecycles OPEN, ONGOING and RECOVERING. On a backend without `/insights` the entities stay
+empty. Version 0.5.0 removes the old per-station analysis entities (`{station}_analysis_*`).
 
 An entity becomes `unavailable` when its sensor is inactive on HydroNode, or when its last known
 value is older than **2 hours**. The window is deliberately generous: channels that are only
@@ -164,75 +171,72 @@ is merged, Home Assistant shows a generic placeholder icon.
 
 ## Events & automation examples
 
-### `hydronode_anomaly`
+### `hydronode_incident`
 
-Fired on the HA event bus whenever HydroNode's anomaly detector flags an unexpected reading.
-`event_data` includes `anomalyId`, `sensorId`, `stationId`, `sensorName`, `anomalyType`
-(`SPIKE`/`DROP`/`GRADUAL_DRIFT`/`THRESHOLD_BREACH`), `deviation`, `currentValue`,
-`expectedValue`, `timestamp`, and a `values` map with **every current reading of that sensor**
-(e.g. `{"WATER_TEMPERATURE": 28.5, "WATER_PH": 6.8, "WATER_EC": 1200.0}`), so automations can
-combine multiple readings without extra lookups.
+Fired for every incident change pushed by HydroNode. `event_data` is the incident itself:
+`incidentId`, `sensorId`, `stationId`, `sensorName`, `channel` (`canonicalType`, `displayName`
+or null for the whole device), `category`, `severity` (`INFO`/`WARNING`/`HIGH`/`CRITICAL`),
+`lifecycle` (`OPEN`/`ONGOING`/`RECOVERING`/`RESOLVED`/`EXPIRED`/`SUPPRESSED`/`INVALIDATED`),
+`direction`, `triggerValue`, `occurrenceCount`, `actionRequired`, `firstSeenAt`, `lastSeenAt`,
+`recoveredAt` and `transition` (`reason`, `fromLifecycle`, `toLifecycle`, `revision`).
 
 ```yaml
 automation:
-  - alias: "HydroNode: notify on anomaly"
+  - alias: "HydroNode: notify on new serious incident"
     trigger:
       - platform: event
-        event_type: hydronode_anomaly
-    condition:
-      - condition: template
-        value_template: "{{ trigger.event.data.anomalyType == 'SPIKE' }}"
-    action:
-      - service: notify.mobile_app_my_phone
-        data:
-          title: "HydroNode anomaly: {{ trigger.event.data.sensorName }}"
-          message: >
-            {{ trigger.event.data.anomalyType }} detected:
-            {{ trigger.event.data.currentValue }}
-            (expected ~{{ trigger.event.data.expectedValue }},
-            {{ trigger.event.data.deviation }}σ off).
-
-  - alias: "HydroNode: high temp + low humidity alert"
-    trigger:
-      - platform: event
-        event_type: hydronode_anomaly
+        event_type: hydronode_incident
     condition:
       - condition: template
         value_template: >
-          {{ trigger.event.data.values.get('TEMPERATURE', 0) > 30 and
-             trigger.event.data.values.get('HUMIDITY', 100) < 50 }}
+          {{ trigger.event.data.transition.reason == 'first_detection' and
+             trigger.event.data.severity in ['HIGH', 'CRITICAL'] }}
     action:
       - service: notify.mobile_app_my_phone
         data:
-          message: "Greenhouse running hot and dry — check ventilation."
+          title: "HydroNode: {{ trigger.event.data.sensorName }}"
+          message: >
+            {{ trigger.event.data.category }} ({{ trigger.event.data.severity }}),
+            {{ trigger.event.data.lifecycle }}
 ```
 
-### `hydronode_ai_analysis`
-
-Fired a few minutes after `hydronode_anomaly`, once HydroNode's AI review has finished. In
-addition to the same base fields as `hydronode_anomaly`, `event_data` carries `provider` and an
-`analysis` object: `explanation`, `confidence`, `air_quality_score`, `is_ventilation_event`,
-`should_alert`, `alert_severity` (`NONE`/`LOW`/`MEDIUM`/`HIGH`/`CRITICAL`), `environment_score`,
-`affected_sensors`, and `recommendation`.
+The station's event entity offers the same as device triggers without templates:
 
 ```yaml
 automation:
-  - alias: "HydroNode: AI-confirmed high-severity alert"
+  - alias: "HydroNode: greenhouse incident recovered"
     trigger:
-      - platform: event
-        event_type: hydronode_ai_analysis
-    condition:
-      - condition: template
-        value_template: >
-          {{ trigger.event.data.analysis.should_alert and
-             trigger.event.data.analysis.alert_severity in ['HIGH', 'CRITICAL'] }}
+      - platform: state
+        entity_id: event.gewaechshaus_events
+        attribute: event_type
+        to: incident_recovered
     action:
       - service: notify.mobile_app_my_phone
         data:
-          title: "HydroNode: {{ trigger.event.data.analysis.alert_severity }} alert"
-          message: >
-            {{ trigger.event.data.sensorName }}: {{ trigger.event.data.analysis.explanation }}
-            Recommendation: {{ trigger.event.data.analysis.recommendation }}
+          message: "{{ trigger.to_state.attributes.sensor_name }} is back to normal."
+```
+
+### `hydronode_analysis`
+
+Fired when a new analysis is ready. `event_data`: `analysisId`, `sensorId`, `stationId`,
+`sensorName`, `generatedAt`, `source` (`LLM`/`RULE_TEMPLATE`), `severity`, `shouldAlert`,
+`summary`, `findings` (`title`, `detail`, `certainty`), `recommendations` (`actionCode`, `text`),
+`airQuality` (`value` 0–100, `band`, `limitingPollutant`) and `environmentScore`.
+
+```yaml
+automation:
+  - alias: "HydroNode: analysis says act"
+    trigger:
+      - platform: event
+        event_type: hydronode_analysis
+    condition:
+      - condition: template
+        value_template: "{{ trigger.event.data.shouldAlert }}"
+    action:
+      - service: notify.mobile_app_my_phone
+        data:
+          title: "HydroNode analysis: {{ trigger.event.data.sensorName }}"
+          message: "{{ trigger.event.data.summary }}"
 ```
 
 You can also trigger directly off entity state changes as with any other Home Assistant sensor:
@@ -255,7 +259,7 @@ automation:
 ## Diagnostics
 
 Config entry diagnostics (**Settings → Devices & Services → HydroNode → ⋮ → Download
-diagnostics**) include the current bootstrap payload and states count, with the token, URL, account/device identifiers, names and coordinates redacted.
+diagnostics**) include the current bootstrap payload, states count and incident/analysis counts, with the token, URL, account/device identifiers, names and coordinates redacted.
 
 ---
 

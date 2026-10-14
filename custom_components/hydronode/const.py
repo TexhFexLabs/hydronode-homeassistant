@@ -45,6 +45,7 @@ DEFAULT_FIRE_VALUE_EVENTS = False
 # --- REST paths ----------------------------------------------------------------
 BOOTSTRAP_PATH = "/api/ha/v1/bootstrap"
 STATES_PATH = "/api/ha/v1/states"
+INSIGHTS_PATH = "/api/ha/v1/insights"
 BOOTSTRAP_REFRESH_INTERVAL = 5 * 60  # seconds — auto-discovery per design doc §6
 
 # --- WebSocket -----------------------------------------------------------------
@@ -58,12 +59,12 @@ WS_CLOSE_SESSION_LIMIT = 4429
 MSG_TYPE_AUTH = "auth"
 MSG_TYPE_AUTH_OK = "auth_ok"
 EVENT_TYPE_VALUE_UPDATED = "value.updated"
-EVENT_TYPE_ANOMALY_DETECTED = "anomaly.detected"
-EVENT_TYPE_AI_ANALYZED = "anomaly.ai_analyzed"
+EVENT_TYPE_INCIDENT_UPDATED = "incident.updated"
+EVENT_TYPE_ANALYSIS_COMPLETED = "analysis.completed"
 
 # --- HA event-bus event names ---------------------------------------------------
-EVENT_ANOMALY = "hydronode_anomaly"
-EVENT_AI_ANALYSIS = "hydronode_ai_analysis"
+EVENT_INCIDENT = "hydronode_incident"
+EVENT_ANALYSIS = "hydronode_analysis"
 EVENT_VALUE_UPDATED = "hydronode_value_updated"
 
 # --- Availability ---------------------------------------------------------------
@@ -604,25 +605,3 @@ SENSOR_TYPE_NAMES: dict[str, str] = {
     "SNR": "SNR",
     "GPS_SPEED": "GPS Speed",
 }
-
-
-# --- AI analysis -----------------------------------------------------------------
-# Values the backend can put into SensorAnomaly.anomalyType. Only five are ever
-# written today — "SPIKE"/"DROP" (AnomalyDetector, sigma spike), "THRESHOLD_BREACH"
-# (AnomalyDetector, outside normal range), "DRIFT" (AnomalyDetector, gradual change)
-# and "PERIODIC_REVIEW" (AnomalyAiScheduler). "GRADUAL_DRIFT" is legacy: no code path
-# writes it any more, but older rows and the web client's union type still carry it.
-# The column is a free-form String, so extend this list when the backend gains a type;
-# an unlisted value is logged and reported as unknown instead of breaking the enum.
-# HA enum states and translation keys use lowercase; wire payloads stay unchanged.
-ANOMALY_TYPE_OPTIONS: list[str] = [
-    "spike",
-    "drop",
-    "drift",
-    "gradual_drift",
-    "threshold_breach",
-    "periodic_review",
-]
-
-# Fixed by the AI prompt in AnomalyAiScheduler ("NONE|LOW|MEDIUM|HIGH|CRITICAL").
-ALERT_SEVERITY_OPTIONS: list[str] = ["none", "low", "medium", "high", "critical"]

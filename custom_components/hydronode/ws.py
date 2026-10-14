@@ -14,8 +14,8 @@ from homeassistant.core import HomeAssistant
 
 from .api import HydroNodeAuthError, normalize_base_url
 from .const import (
-    EVENT_TYPE_AI_ANALYZED,
-    EVENT_TYPE_ANOMALY_DETECTED,
+    EVENT_TYPE_ANALYSIS_COMPLETED,
+    EVENT_TYPE_INCIDENT_UPDATED,
     EVENT_TYPE_VALUE_UPDATED,
     MSG_TYPE_AUTH,
     MSG_TYPE_AUTH_OK,
@@ -66,8 +66,8 @@ class HydroNodeWebSocketClient:
         base_url: str,
         token: str,
         on_value_updated: DataCallback,
-        on_anomaly_detected: DataCallback,
-        on_ai_analyzed: DataCallback,
+        on_incident_updated: DataCallback,
+        on_analysis_completed: DataCallback,
         on_auth_failed: VoidCallback,
         on_reconnect: ReconnectCallback | None = None,
         expected_user_id: str | None = None,
@@ -77,8 +77,8 @@ class HydroNodeWebSocketClient:
         self._ws_url = build_ws_url(base_url)
         self._token = token
         self._on_value_updated = on_value_updated
-        self._on_anomaly_detected = on_anomaly_detected
-        self._on_ai_analyzed = on_ai_analyzed
+        self._on_incident_updated = on_incident_updated
+        self._on_analysis_completed = on_analysis_completed
         self._on_auth_failed = on_auth_failed
         self._on_reconnect = on_reconnect
         self._task: asyncio.Task | None = None
@@ -199,8 +199,8 @@ class HydroNodeWebSocketClient:
         handler = (
             {
                 EVENT_TYPE_VALUE_UPDATED: self._on_value_updated,
-                EVENT_TYPE_ANOMALY_DETECTED: self._on_anomaly_detected,
-                EVENT_TYPE_AI_ANALYZED: self._on_ai_analyzed,
+                EVENT_TYPE_INCIDENT_UPDATED: self._on_incident_updated,
+                EVENT_TYPE_ANALYSIS_COMPLETED: self._on_analysis_completed,
             }.get(msg_type)
             if isinstance(msg_type, str)
             else None

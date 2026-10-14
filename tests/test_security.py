@@ -134,6 +134,7 @@ async def test_bad_discovery_does_not_remove_existing_entities(hass, aioclient_m
 
     aioclient_mock.get(f"{old_base}/api/ha/v1/bootstrap", json=BOOTSTRAP)
     aioclient_mock.get(f"{old_base}/api/ha/v1/states", json=[])
+    aioclient_mock.get(f"{old_base}/api/ha/v1/insights", json={"stations": []})
     entry = MockConfigEntry(
         domain=DOMAIN, unique_id="u1", data={CONF_BASE_URL: old_base, CONF_TOKEN: TOKEN}
     )
@@ -181,8 +182,8 @@ async def test_websocket_redirect_cannot_receive_token(
         base_url=str(source_server.make_url("")),
         token="hat_secret",
         on_value_updated=Mock(),
-        on_anomaly_detected=Mock(),
-        on_ai_analyzed=Mock(),
+        on_incident_updated=Mock(),
+        on_analysis_completed=Mock(),
         on_auth_failed=Mock(),
     )
     try:

@@ -11,7 +11,7 @@ from yarl import URL
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 
-from .const import BOOTSTRAP_PATH, STATES_PATH
+from .const import BOOTSTRAP_PATH, INSIGHTS_PATH, STATES_PATH
 from .validation import valid_bootstrap, valid_state
 
 REQUEST_TIMEOUT = aiohttp.ClientTimeout(total=30, connect=10)
@@ -24,6 +24,10 @@ class HydroNodeApiError(Exception):
 
 class HydroNodeAuthError(HydroNodeApiError):
     """The server rejected the token or its permissions."""
+
+
+class HydroNodeNotFound(HydroNodeApiError):
+    """The endpoint does not exist (older backend)."""
 
 
 class HydroNodeConnectionError(HydroNodeApiError):
@@ -114,6 +118,20 @@ class HydroNodeApiClient:
             raise HydroNodeApiError("Invalid states response")
         return result
 
+    async def insights(self) -> dict[str, Any] | None:
+        """Open incidents and newest analyses per station.
+
+        Returns None when the backend predates the endpoint (404), so an older
+        server just leaves the insight entities empty instead of failing setup.
+        """
+        try:
+            result = await self._get(INSIGHTS_PATH)
+        except HydroNodeNotFound:
+            return None
+        if not isinstance(result, dict) or not isinstance(result.get("stations"), list):
+            raise HydroNodeApiError("Invalid insights response")
+        return result
+
     async def _get(self, path: str) -> Any:
         headers = {"Authorization": f"Bearer {self._token}"}
         try:
@@ -125,6 +143,8 @@ class HydroNodeApiClient:
             ) as response:
                 if response.status in (401, 403):
                     raise HydroNodeAuthError("HydroNode token or permissions rejected")
+                if response.status == 404:
+                    raise HydroNodeNotFound(f"Not found: {path}")
                 if response.status != 200:
                     # Remote response bodies can contain credentials or personal data.
                     raise HydroNodeApiError(
