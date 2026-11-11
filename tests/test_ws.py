@@ -127,7 +127,7 @@ async def test_connect_once_sends_auth_and_dispatches_value_update(hass):
     with pytest.raises(HydroNodeWsError):
         await client._connect_once()
 
-    assert ws.sent == [{"type": "auth", "token": "hat_test"}]
+    assert ws.sent == [{"type": "auth", "token": "hat_test", "caps": ["data1"]}]
     assert received["value"] == value_data
 
 

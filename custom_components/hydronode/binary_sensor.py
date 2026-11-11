@@ -1,4 +1,4 @@
-"""Binary sensor platform for HydroNode: one Incident problem sensor per station."""
+"""Binary sensor platform: incident problem sensor per station, on/off data points."""
 
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import HydroNodeConfigEntry
 from .const import CONF_INCLUDE_FOLLOWED, DEFAULT_INCLUDE_FOLLOWED
+from .data_points import HydroNodePointEntity, read_unique_id, setup_point_platform
 from .insights import (
     KEY_INCIDENT,
     HydroNodeInsightsEntity,
@@ -53,6 +54,9 @@ async def async_setup_entry(
 
     _add_from_bootstrap(coordinator.bootstrap)
     entry.async_on_unload(coordinator.add_new_entity_listener(_add_from_bootstrap))
+    setup_point_platform(
+        entry, "binary_sensor", async_add_entities, HydroNodePointBinarySensor
+    )
 
 
 class HydroNodeIncidentBinarySensor(HydroNodeInsightsEntity, BinarySensorEntity):
@@ -67,3 +71,27 @@ class HydroNodeIncidentBinarySensor(HydroNodeInsightsEntity, BinarySensorEntity)
     @property
     def is_on(self) -> bool:
         return bool(self._store.open_incidents(self._station_id))
+
+
+class HydroNodePointBinarySensor(HydroNodePointEntity, BinarySensorEntity):
+    """A data point read as on/off. Its labels are an attribute (Open, Wet ...)."""
+
+    def __init__(self, coordinator, client, station, sensor, point) -> None:
+        super().__init__(
+            coordinator, client, station, sensor, point, read_unique_id(point["id"])
+        )
+
+    @property
+    def is_on(self) -> bool | None:
+        value = self._value()
+        if value not in (0.0, 1.0):
+            return None
+        return value == 1.0
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        attributes = super().extra_state_attributes
+        label = self._label()
+        if label is not None:
+            attributes["label"] = label
+        return attributes

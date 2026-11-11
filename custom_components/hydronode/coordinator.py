@@ -14,6 +14,7 @@ from homeassistant.util import dt as dt_util
 
 from .api import HydroNodeApiClient, HydroNodeApiError, HydroNodeAuthError
 from .const import BOOTSTRAP_REFRESH_INTERVAL, DOMAIN
+from .data_points import point_index
 from .validation import valid_state
 
 _LOGGER = logging.getLogger(__name__)
@@ -52,6 +53,10 @@ class HydroNodeCoordinator(DataUpdateCoordinator[dict[StateKey, dict[str, Any]]]
         self.bootstrap: dict[str, Any] = {"user": {}, "stations": []}
         self._last_bootstrap_at: float | None = None
         self.new_entity_listeners: list[NewEntityListener] = []
+        # Data platform: latest row per data point id, and which old (sensor,
+        # type, channel) key a device data point shares, for WS pushes.
+        self.point_states: dict[str, dict[str, Any]] = {}
+        self.point_by_key: dict[StateKey, dict[str, Any]] = {}
 
     def add_new_entity_listener(
         self, listener: NewEntityListener
@@ -79,6 +84,7 @@ class HydroNodeCoordinator(DataUpdateCoordinator[dict[StateKey, dict[str, Any]]]
                 for station in bootstrap.get("stations", [])
                 for sensor in station.get("sensors", [])
             }
+            self.point_by_key = point_index(bootstrap)
             self._last_bootstrap_at = dt_util.utcnow().timestamp()
             for listener in list(self.new_entity_listeners):
                 listener(self.bootstrap)
@@ -110,7 +116,16 @@ class HydroNodeCoordinator(DataUpdateCoordinator[dict[StateKey, dict[str, Any]]]
             raise UpdateFailed(f"Error fetching HydroNode states: {err}") from err
 
         self.auth_failed = False
-        indexed = self._index_states(states)
+        self.point_states = self._merge_points(
+            {
+                state["dataPointId"]: state
+                for state in states
+                if state.get("dataPointId") is not None
+            }
+        )
+        indexed = self._index_states(
+            [state for state in states if state.get("dataPointId") is None]
+        )
         # A poll started before a push must not overwrite the newer measurement.
         # Only merge keys still in REST, so revoked/deleted sensors disappear.
         for key, state in indexed.items():
@@ -137,6 +152,21 @@ class HydroNodeCoordinator(DataUpdateCoordinator[dict[StateKey, dict[str, Any]]]
             indexed[key] = state
         return indexed
 
+    def _merge_points(
+        self, fresh: dict[str, dict[str, Any]]
+    ) -> dict[str, dict[str, Any]]:
+        """Keep a pushed or written row that is newer than the poll result."""
+        for point_id, state in fresh.items():
+            current = self.point_states.get(point_id)
+            if current is not None and self._newer(current, state):
+                fresh[point_id] = {**current, "desired": state.get("desired")}
+        return fresh
+
+    def apply_point_state(self, point_id: str, row: dict[str, Any]) -> None:
+        """A write answered with the data point: show it before the next poll."""
+        self.point_states[point_id] = row
+        self.async_update_listeners()
+
     @staticmethod
     def _newer(candidate: dict[str, Any], current: dict[str, Any]) -> bool:
         candidate_time = dt_util.parse_datetime(candidate["timestamp"])
@@ -161,6 +191,18 @@ class HydroNodeCoordinator(DataUpdateCoordinator[dict[StateKey, dict[str, Any]]]
         ):
             return False
         current[key] = updated
+        point = self.point_by_key.get(key)
+        if point is not None:
+            # A device data point read as on/off or a choice shares this series.
+            previous_point = self.point_states.get(point["id"], {})
+            self.point_states[point["id"]] = {
+                **previous_point,
+                **updated,
+                "dataPointId": point["id"],
+                "label": dict(point["options"]).get(updated["value"])
+                if updated["value"] == int(updated["value"])
+                else None,
+            }
         # async_set_updated_data resets the polling timer. Continuous pushes would
         # otherwise suppress discovery, stale-value checks and token revalidation.
         self.async_update_listeners()

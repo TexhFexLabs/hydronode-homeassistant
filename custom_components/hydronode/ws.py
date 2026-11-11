@@ -19,6 +19,7 @@ from .const import (
     EVENT_TYPE_VALUE_UPDATED,
     MSG_TYPE_AUTH,
     MSG_TYPE_AUTH_OK,
+    WS_CAPS,
     WS_AUTH_TIMEOUT,
     WS_CLOSE_AUTH_FAILED,
     WS_CLOSE_SESSION_LIMIT,
@@ -136,7 +137,9 @@ class HydroNodeWebSocketClient:
         async with self._session.ws_connect(
             self._ws_url, heartbeat=30, max_msg_size=1024 * 1024
         ) as ws:
-            await ws.send_json({"type": MSG_TYPE_AUTH, "token": self._token})
+            await ws.send_json(
+                {"type": MSG_TYPE_AUTH, "token": self._token, "caps": WS_CAPS}
+            )
 
             try:
                 auth_msg = await asyncio.wait_for(ws.receive(), timeout=WS_AUTH_TIMEOUT)

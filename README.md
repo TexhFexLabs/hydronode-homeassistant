@@ -152,6 +152,32 @@ value is older than **2 hours**. The window is deliberately generous: channels t
 included in every Nth uplink (e.g. particulate matter) keep showing their last value instead of
 flapping to `unavailable`, and history graphs stay connected.
 
+### Data points (0.6.0, HydroNode data platform)
+
+Since 0.6.0 the integration sends `X-HydroNode-Capabilities: data1`. A HydroNode server with the data
+platform then also lists MQTT, push, virtual and external sensors and every data point with its value
+type. A server without it answers as before and nothing changes.
+
+| Data point | Entity | Unique ID | State |
+|---|---|---|---|
+| Number (MQTT, push, virtual, external) | `sensor` | `dp_{data point}` | the number, unit and decimals from HydroNode |
+| On/off | `binary_sensor` | `dp_{data point}` | `on`/`off`, attribute `label` (for example `Open`, `Wet`) |
+| Choice | `sensor` (`enum`) | `dp_{data point}` | the label of the current option |
+| Text | `sensor` | `dp_{data point}` | the text (up to 255 characters) |
+| Writable on/off | `switch` | `dp_{data point}_write` | switches the data point |
+| Writable choice | `select` | `dp_{data point}_write` | picks an option |
+| Writable number | `number` | `dp_{data point}_write` | sets the number within its limits |
+
+- Device sensors keep all their entities with the same IDs. A device value you read as on/off or as a
+  choice in HydroNode gets an extra entity next to its number.
+- A data point becomes a control only when it is writable in HydroNode, your share allows changes
+  (Edit, Manage or owner) and the integration uses a full-access token (`hat_…`). Read-only tokens
+  (`hrt_…`) never switch anything.
+- A switch on a device shows the new state right away and the attribute `write_state` `pending` until the
+  device confirms it (`confirmed`) or declines it (`failed`, the switch falls back).
+- MQTT, push, virtual and external sensors are devices with the model *MQTT sensor*, *Push sensor*,
+  *Virtual sensor* or *External data*.
+
 Entity names are just the measurement title (the LoRaWAN channel name if configured, otherwise
 the prettified type, e.g. `Battery_Voltage` or `Water Temperature`). The station device supplies
 the prefix, so the full friendly name reads `<Station> <Title>`. Measurement types that have not

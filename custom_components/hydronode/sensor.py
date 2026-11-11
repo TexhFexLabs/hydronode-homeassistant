@@ -34,6 +34,13 @@ from .const import (
     STALE_TIMEOUT_SECONDS,
 )
 from .coordinator import HydroNodeCoordinator, StateKey, build_unique_id
+from .data_points import (
+    MAX_STATE_LENGTH,
+    HydroNodePointEntity,
+    legacy_types,
+    read_unique_id,
+    setup_point_platform,
+)
 from .insights import (
     KEY_AIR_QUALITY_INDEX,
     KEY_ANALYSIS,
@@ -126,10 +133,9 @@ async def async_setup_entry(
             for sensor in station.get("sensors", []):
                 # Two channels of the same type on one sensor would collide on the
                 # pretty type name, so only then the channel name disambiguates.
-                type_counts = Counter(
-                    type_info["type"].upper() for type_info in sensor.get("types", [])
-                )
-                for type_info in sensor.get("types", []):
+                types = legacy_types(sensor)
+                type_counts = Counter(type_info["type"].upper() for type_info in types)
+                for type_info in types:
                     key: StateKey = (
                         sensor["id"],
                         type_info["type"],
@@ -160,6 +166,7 @@ async def async_setup_entry(
     _add_from_bootstrap(coordinator.bootstrap)
     entry.async_on_unload(coordinator.add_new_entity_listener(_add_from_bootstrap))
     entry.async_on_unload(insights.async_add_analysis_listener(_add_analysis_entities))
+    setup_point_platform(entry, "sensor", async_add_entities, HydroNodePointSensor)
 
 
 class HydroNodeSensorEntity(CoordinatorEntity[HydroNodeCoordinator], SensorEntity):
@@ -452,3 +459,43 @@ class HydroNodeAnalysisSensor(HydroNodeInsightsEntity, RestoreSensor):
                 "limiting_pollutant": analysis["air_quality"]["limiting_pollutant"],
             }
         return None
+
+
+class HydroNodePointSensor(HydroNodePointEntity, SensorEntity):
+    """A data point read as a number, a choice (enum) or a text."""
+
+    def __init__(self, coordinator, client, station, sensor, point) -> None:
+        super().__init__(
+            coordinator, client, station, sensor, point, read_unique_id(point["id"])
+        )
+        value_type = point["value_type"]
+        if value_type == "ENUM":
+            self._attr_device_class = SensorDeviceClass.ENUM
+            self._attr_options = [label for _, label in point["options"]]
+        elif value_type == "TEXT":
+            self._attr_icon = "mdi:text"
+        else:
+            # The type's device class only where the unit is the one HA expects.
+            device_class, unit, state_class = SENSOR_TYPE_MAP.get(
+                (point["type"] or "").upper(), GENERIC_SENSOR_TYPE
+            )
+            if unit is not None and unit == point["unit"]:
+                self._attr_device_class = device_class
+            self._attr_state_class = state_class or SensorStateClass.MEASUREMENT
+            self._attr_native_unit_of_measurement = point["unit"]
+            if point["decimals"] is not None:
+                self._attr_suggested_display_precision = point["decimals"]
+
+    @property
+    def native_value(self) -> Any:
+        row = self._row
+        if row is None:
+            return None
+        value_type = self._point["value_type"]
+        if value_type == "TEXT":
+            text = row.get("text")
+            return text[:MAX_STATE_LENGTH] if isinstance(text, str) else None
+        if value_type == "ENUM":
+            label = self._label()
+            return label if label in self._attr_options else None
+        return self._value()

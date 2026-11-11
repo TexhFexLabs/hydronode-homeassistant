@@ -46,6 +46,22 @@ DEFAULT_FIRE_VALUE_EVENTS = False
 BOOTSTRAP_PATH = "/api/ha/v1/bootstrap"
 STATES_PATH = "/api/ha/v1/states"
 INSIGHTS_PATH = "/api/ha/v1/insights"
+POINT_VALUE_PATH = "/api/data/v1/points/{point_id}/value"
+
+# --- Data platform -------------------------------------------------------------
+# Sent with every request (and as `caps` in the WS auth). A server that knows the
+# data platform then adds sensor kinds and data points; an older one ignores it.
+CAPABILITIES_HEADER = "X-HydroNode-Capabilities"
+CAPABILITIES = "data1"
+# Only full-access tokens may write; read tokens (hrt_) never get controls.
+FULL_TOKEN_PREFIX = "hat_"
+# Device model shown for sensors that are not HydroNode devices.
+KIND_MODELS = {
+    "MQTT": "MQTT sensor",
+    "PUSH": "Push sensor",
+    "VIRTUAL": "Virtual sensor",
+    "EXTERNAL": "External data",
+}
 BOOTSTRAP_REFRESH_INTERVAL = 5 * 60  # seconds — auto-discovery per design doc §6
 
 # --- WebSocket -----------------------------------------------------------------
@@ -58,6 +74,7 @@ WS_CLOSE_SESSION_LIMIT = 4429
 
 MSG_TYPE_AUTH = "auth"
 MSG_TYPE_AUTH_OK = "auth_ok"
+WS_CAPS = [CAPABILITIES]
 EVENT_TYPE_VALUE_UPDATED = "value.updated"
 EVENT_TYPE_INCIDENT_UPDATED = "incident.updated"
 EVENT_TYPE_ANALYSIS_COMPLETED = "analysis.completed"
