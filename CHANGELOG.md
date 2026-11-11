@@ -15,6 +15,12 @@ All notable changes to the HydroNode Home Assistant integration.
   changes and the token is a full-access token (`hat_`). A pending device command shows as
   `write_state: pending`.
 
+- Live updates over the WebSocket for every data point (`dataPointId` in `value.updated`): MQTT, push,
+  virtual and external sensors, texts and references, not only device series.
+- References of virtual sensors as entities of their own (`dp_{reference}`, attribute `reference_of`).
+- Read-only tokens (`hrt_`): the setup accepts them after a "read only" notice; sensors and states
+  only, no switches, selects or numbers.
+
 ### Unchanged
 
 - Every existing entity keeps its unique ID and entity ID. Device numbers stay as they are.

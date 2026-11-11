@@ -232,6 +232,8 @@ class HydroNodePointEntity(CoordinatorEntity):
         attributes: dict[str, Any] = {"data_point_id": self._point_id}
         if point["channel"]:
             attributes["channel_name"] = point["channel"]
+        if point.get("reference_of"):
+            attributes["reference_of"] = point["reference_of"]
         self._static_attributes = attributes
 
     @property

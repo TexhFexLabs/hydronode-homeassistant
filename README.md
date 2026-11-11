@@ -68,6 +68,11 @@ regular account password. You create one in the HydroNode web app:
 4. **Copy the token immediately** — it is shown exactly once and cannot be retrieved again
    (only revoked and replaced). Paste it into the integration setup below.
 
+A **read-only token** (`hrt_…`, "Read only" in the same list) works too: Home Assistant then shows
+every sensor, on/off state, choice and text, but creates no switches, selects or numbers. The setup
+says so before it finishes. This needs a HydroNode server with the data platform; older servers
+refuse read-only tokens here.
+
 Tokens can be revoked any time from the same **Profile → API Tokens** page, e.g. after
 removing the integration. Tokens are only created from an active web/app session (never from
 another PAT), so a leaked token can't mint further tokens.
@@ -177,6 +182,10 @@ type. A server without it answers as before and nothing changes.
   device confirms it (`confirmed`) or declines it (`failed`, the switch falls back).
 - MQTT, push, virtual and external sensors are devices with the model *MQTT sensor*, *Push sensor*,
   *Virtual sensor* or *External data*.
+- A virtual sensor's references (a data point it shows from another sensor) are entities of their own
+  on the virtual sensor (`dp_{reference}`, attribute `reference_of` = the source data point), read only.
+- Every data point updates live over the WebSocket, also MQTT, push, virtual and external ones, texts
+  and references. Without a WebSocket the 60 s polling catches up.
 
 Entity names are just the measurement title (the LoRaWAN channel name if configured, otherwise
 the prettified type, e.g. `Battery_Voltage` or `Water Temperature`). The station device supplies

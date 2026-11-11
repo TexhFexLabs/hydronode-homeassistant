@@ -512,3 +512,148 @@ async def test_push_of_a_device_series_moves_its_data_point(hass, aioclient_mock
     await hass.async_block_till_done()
     heater = hass.states.get(entity_id(hass, "select", "dp_p-heater_write"))
     assert heater.state == "Boost"
+
+
+def virtual_bootstrap() -> dict:
+    """The data account plus a virtual sensor with a computed point and a reference."""
+    bootstrap = data_bootstrap()
+    bootstrap["stations"].append(
+        {
+            "id": "virt",
+            "name": "Greenhouse average",
+            "role": "OWNER",
+            "isPublic": False,
+            "sensors": [
+                {
+                    "id": "virt",
+                    "name": "Greenhouse average",
+                    "active": True,
+                    "types": [],
+                    "kind": "VIRTUAL",
+                    "dataPoints": [
+                        point(
+                            "p-avg", "avg", "TEMPERATURE", "NUMBER", origin="COMPUTED"
+                        ),
+                        point(
+                            "ref-1",
+                            "Mast humidity",
+                            "HUMIDITY",
+                            "NUMBER",
+                            unit="%",
+                            origin="REFERENCE",
+                            referenceOf="p-mast-humidity",
+                        ),
+                    ],
+                }
+            ],
+        }
+    )
+    return bootstrap
+
+
+async def test_references_are_entities_and_follow_pushes(hass, aioclient_mock):
+    """H-2: a virtual sensor's reference is its own entity, live by data point id."""
+    now = dt_util.utcnow().isoformat()
+    states = data_states(now) + [
+        {
+            "sensorId": "virt",
+            "type": "HUMIDITY",
+            "channelName": None,
+            "value": 61.0,
+            "timestamp": now,
+            "dataPointId": "ref-1",
+            "referenceOf": "p-mast-humidity",
+        }
+    ]
+    mock_api(aioclient_mock, virtual_bootstrap(), states)
+    entry = await setup_entry(hass)
+    ref_entity = entity_id(hass, "sensor", "dp_ref-1")
+    assert ref_entity is not None
+    ref = hass.states.get(ref_entity)
+    assert ref.state == "61.0"
+    assert ref.attributes["reference_of"] == "p-mast-humidity"
+
+    coordinator = entry.runtime_data.coordinator
+    later = dt_util.utcnow().isoformat()
+    assert coordinator.apply_ws_value_update(
+        {
+            "sensorId": "virt",
+            "stationId": None,
+            "type": "HUMIDITY",
+            "channelName": None,
+            "value": 64.0,
+            "timestamp": later,
+            "dataPointId": "ref-1",
+            "referenceOf": "p-mast-humidity",
+            "valueType": "NUMBER",
+        }
+    )
+    await hass.async_block_till_done()
+    assert hass.states.get(ref_entity).state == "64.0"
+    # A reference never writes an old-style series under the virtual sensor.
+    assert ("virt", "HUMIDITY", None) not in coordinator.data
+
+
+async def test_data_point_pushes_reach_every_kind(hass, aioclient_mock):
+    """H-2: MQTT on/off, texts and device values move by their data point id."""
+    now = dt_util.utcnow().isoformat()
+    mock_api(aioclient_mock, data_bootstrap(), data_states(now))
+    entry = await setup_entry(hass)
+    coordinator = entry.runtime_data.coordinator
+    later = dt_util.utcnow().isoformat()
+
+    def push(sensor, type_, channel, point_id, value, **extra):
+        return coordinator.apply_ws_value_update(
+            {
+                "sensorId": sensor,
+                "stationId": None,
+                "type": type_,
+                "channelName": channel,
+                "value": value,
+                "timestamp": later,
+                "dataPointId": point_id,
+                **extra,
+            }
+        )
+
+    assert push("plug", "CUSTOM", "on", "p-on", 0.0, valueType="BOOL", label="Off")
+    assert push(
+        "plug", "CUSTOM", "status", "p-status", 0, valueType="TEXT", text="Drying"
+    )
+    assert push("dev1", "WATER_TEMPERATURE", None, "p-temp", 22.5, valueType="NUMBER")
+    await hass.async_block_till_done()
+    assert hass.states.get(entity_id(hass, "binary_sensor", "dp_p-on")).state == "off"
+    assert hass.states.get(entity_id(hass, "sensor", "dp_p-status")).state == "Drying"
+    # The device value also moves its old entity (same series).
+    old = hass.states.get(entity_id(hass, "sensor", "dev1_WATER_TEMPERATURE_"))
+    assert old.state == "22.5"
+    # The same push again changes nothing; an older one is ignored.
+    assert not push(
+        "plug", "CUSTOM", "status", "p-status", 0, valueType="TEXT", text="Drying"
+    )
+    # A broken push is dropped.
+    assert not push("plug", "CUSTOM", "status", "p-status", 0, text=5)
+
+
+async def test_read_token_flow_says_read_only(hass, aioclient_mock):
+    """H-2: the config flow takes an hrt_ token after a read only notice."""
+    from homeassistant import config_entries
+    from homeassistant.data_entry_flow import FlowResultType
+
+    aioclient_mock.get(
+        f"{BASE_URL}/api/ha/v1/bootstrap",
+        json={"user": {"id": "u-read", "displayName": "Felix"}, "stations": []},
+    )
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    with patch("custom_components.hydronode.async_setup_entry", return_value=True):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {CONF_BASE_URL: BASE_URL, CONF_TOKEN: READ_TOKEN}
+        )
+        assert result["type"] is FlowResultType.FORM
+        assert result["step_id"] == "read_only"
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
+        await hass.async_block_till_done()
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"][CONF_TOKEN] == READ_TOKEN

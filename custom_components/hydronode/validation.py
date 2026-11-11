@@ -102,6 +102,10 @@ def normalize_point(raw: Any) -> dict[str, Any] | None:
         "min": _number("min"),
         "max": _number("max"),
         "step": _number("step"),
+        # A virtual sensor's reference: the source data point it reads through.
+        "reference_of": raw.get("referenceOf")
+        if nonempty_string(raw.get("referenceOf"))
+        else None,
     }
 
 

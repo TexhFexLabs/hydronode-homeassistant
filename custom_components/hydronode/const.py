@@ -55,6 +55,8 @@ CAPABILITIES_HEADER = "X-HydroNode-Capabilities"
 CAPABILITIES = "data1"
 # Only full-access tokens may write; read tokens (hrt_) never get controls.
 FULL_TOKEN_PREFIX = "hat_"
+# Read tokens (hrt_) read everything Home Assistant shows, but never switch anything.
+READ_TOKEN_PREFIX = "hrt_"
 # Device model shown for sensors that are not HydroNode devices.
 KIND_MODELS = {
     "MQTT": "MQTT sensor",

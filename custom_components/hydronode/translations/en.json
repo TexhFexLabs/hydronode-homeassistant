@@ -3,11 +3,15 @@
     "step": {
       "user": {
         "title": "Connect to HydroNode",
-        "description": "Enter your HydroNode base URL and a Personal Access Token. Create a token in the HydroNode app or web UI under Account → API Tokens.",
+        "description": "Enter your HydroNode base URL and a Personal Access Token. Create a token in the HydroNode app or web UI under Account → API Tokens. A read only token (hrt_) works too, without switches.",
         "data": {
           "base_url": "Base URL",
           "token": "Personal Access Token"
         }
+      },
+      "read_only": {
+        "title": "Read only token",
+        "description": "This token starts with hrt_ and is read only. Home Assistant shows every sensor, on/off state, choice and text, but creates no switches, selects or numbers. Use a full access token (hat_) to switch anything."
       },
       "reauth_confirm": {
         "title": "Reconnect to HydroNode",

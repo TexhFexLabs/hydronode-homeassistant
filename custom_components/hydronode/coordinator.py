@@ -15,7 +15,7 @@ from homeassistant.util import dt as dt_util
 from .api import HydroNodeApiClient, HydroNodeApiError, HydroNodeAuthError
 from .const import BOOTSTRAP_REFRESH_INTERVAL, DOMAIN
 from .data_points import point_index
-from .validation import valid_state
+from .validation import valid_point_state, valid_state
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -177,6 +177,8 @@ class HydroNodeCoordinator(DataUpdateCoordinator[dict[StateKey, dict[str, Any]]]
         """Apply a valid push without postponing REST polling or copying every state."""
         if self.auth_failed or not valid_state(data):
             return False
+        if data.get("dataPointId") is not None:
+            return self._apply_ws_point(data)
         key: StateKey = (data["sensorId"], data["type"], data.get("channelName"))
         current = self.data
         if current is None:
@@ -205,5 +207,58 @@ class HydroNodeCoordinator(DataUpdateCoordinator[dict[StateKey, dict[str, Any]]]
             }
         # async_set_updated_data resets the polling timer. Continuous pushes would
         # otherwise suppress discovery, stale-value checks and token revalidation.
+        self.async_update_listeners()
+        return True
+
+    def _apply_ws_point(self, data: dict[str, Any]) -> bool:
+        """A push of a data platform server: routed by its data point id.
+
+        Every kind arrives this way, also texts and the references of virtual
+        sensors (`referenceOf`, the id is the reference). A device value also
+        updates its old-style entity, so both stay in step.
+        """
+        if not valid_point_state(data):
+            return False
+        point_id = data["dataPointId"]
+        previous_point = self.point_states.get(point_id)
+        row = {
+            field: data.get(field)
+            for field in (
+                "sensorId",
+                "type",
+                "channelName",
+                "value",
+                "timestamp",
+                "dataPointId",
+                "text",
+                "label",
+            )
+        }
+        if previous_point is not None:
+            row["desired"] = previous_point.get("desired")
+        changed = previous_point is None or (
+            not self._newer(previous_point, row)
+            and {field: previous_point.get(field) for field in row} != row
+        )
+        if changed:
+            self.point_states[point_id] = row
+        legacy = False
+        if data.get("referenceOf") is None:
+            key: StateKey = (data["sensorId"], data["type"], data.get("channelName"))
+            current = self.data
+            if current is None:
+                current = self.data = {}
+            previous = current.get(key)
+            updated = {
+                field: data.get(field)
+                for field in ("sensorId", "type", "channelName", "value", "timestamp")
+            }
+            if previous is None or not (
+                previous == updated or self._newer(previous, updated)
+            ):
+                current[key] = updated
+                legacy = True
+        if not (changed or legacy):
+            return False
         self.async_update_listeners()
         return True
