@@ -80,6 +80,8 @@ WS_CAPS = [CAPABILITIES]
 EVENT_TYPE_VALUE_UPDATED = "value.updated"
 EVENT_TYPE_INCIDENT_UPDATED = "incident.updated"
 EVENT_TYPE_ANALYSIS_COMPLETED = "analysis.completed"
+# Data platform servers only: the desired state of a writable data point changed.
+EVENT_TYPE_DESIRED_UPDATED = "desired.updated"
 
 # --- HA event-bus event names ---------------------------------------------------
 EVENT_INCIDENT = "hydronode_incident"

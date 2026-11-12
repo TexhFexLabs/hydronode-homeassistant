@@ -52,6 +52,35 @@ def valid_point_state(data: Any) -> bool:
     )
 
 
+DESIRED_STATES = ("PENDING", "CONFIRMED", "FAILED")
+
+
+def valid_desired(data: Any) -> bool:
+    """A `desired.updated` push: ids, a known state and a timezone-aware time."""
+    if not isinstance(data, dict):
+        return False
+    desired = data.get("desired")
+    if not (
+        nonempty_string(data.get("sensorId"))
+        and nonempty_string(data.get("dataPointId"))
+        and isinstance(desired, dict)
+        and desired.get("state") in DESIRED_STATES
+        and isinstance(desired.get("at"), str)
+    ):
+        return False
+    value = desired.get("value")
+    if value is not None and not (type(value) in (int, float) and math.isfinite(value)):
+        return False
+    for key in ("label", "text", "declineReason"):
+        if desired.get(key) is not None and not isinstance(desired[key], str):
+            return False
+    try:
+        parsed = dt_util.parse_datetime(desired["at"])
+    except (ValueError, OverflowError):
+        return False
+    return parsed is not None and parsed.tzinfo is not None
+
+
 def normalize_point(raw: Any) -> dict[str, Any] | None:
     """A bootstrap data point with checked fields, None when unusable."""
     if not isinstance(raw, dict) or not nonempty_string(raw.get("id")):

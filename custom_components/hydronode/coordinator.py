@@ -15,7 +15,7 @@ from homeassistant.util import dt as dt_util
 from .api import HydroNodeApiClient, HydroNodeApiError, HydroNodeAuthError
 from .const import BOOTSTRAP_REFRESH_INTERVAL, DOMAIN
 from .data_points import point_index
-from .validation import valid_point_state, valid_state
+from .validation import valid_desired, valid_point_state, valid_state
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -209,6 +209,50 @@ class HydroNodeCoordinator(DataUpdateCoordinator[dict[StateKey, dict[str, Any]]]
         # otherwise suppress discovery, stale-value checks and token revalidation.
         self.async_update_listeners()
         return True
+
+    def apply_ws_desired(self, data: dict[str, Any]) -> bool:
+        """`desired.updated`: a switch went pending, confirmed or failed.
+
+        Only the desired part of the row changes, so `write_state` follows at once.
+        A confirmed switch newer than the row's value is the real state (a relay
+        without its own report), like `/states` shows it.
+        """
+        if self.auth_failed or not valid_desired(data):
+            return False
+        point_id = data["dataPointId"]
+        desired = data["desired"]
+        previous = self.point_states.get(point_id)
+        row = (
+            dict(previous)
+            if previous is not None
+            else {
+                "sensorId": data["sensorId"],
+                "dataPointId": point_id,
+                "value": None,
+                "timestamp": desired["at"],
+            }
+        )
+        if row.get("desired") == desired:
+            return False
+        row["desired"] = desired
+        confirmed_value = desired.get("value")
+        if (
+            desired["state"] == "CONFIRMED"
+            and type(confirmed_value) in (int, float)
+            and (row.get("value") is None or self._older(row, desired["at"]))
+        ):
+            row["value"] = confirmed_value
+            row["label"] = desired.get("label")
+            row["timestamp"] = desired["at"]
+        self.point_states[point_id] = row
+        self.async_update_listeners()
+        return True
+
+    @staticmethod
+    def _older(row: dict[str, Any], timestamp: str) -> bool:
+        current = dt_util.parse_datetime(row.get("timestamp") or "")
+        candidate = dt_util.parse_datetime(timestamp)
+        return current is None or (candidate is not None and candidate > current)
 
     def _apply_ws_point(self, data: dict[str, Any]) -> bool:
         """A push of a data platform server: routed by its data point id.

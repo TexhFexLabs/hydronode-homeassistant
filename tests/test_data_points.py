@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+from datetime import timedelta
 from unittest.mock import patch
 
 import pytest
@@ -474,6 +475,64 @@ async def test_read_access_and_read_tokens_never_switch(hass, aioclient_mock):
     assert heater.state == "Eco"
     assert heater.attributes["device_class"] == "enum"
     assert entity_id(hass, "sensor", "dp_p-setpoint") is None
+
+
+async def test_desired_updated_moves_write_state_at_once(hass, aioclient_mock):
+    """The WS event sets write_state without waiting for the next poll."""
+    now = dt_util.utcnow().isoformat()
+    mock_api(aioclient_mock, data_bootstrap(), data_states(now))
+    entry = await setup_entry(hass)
+    coordinator = entry.runtime_data.coordinator
+    pump_id = entity_id(hass, "switch", "dp_p-pump_write")
+    later = (dt_util.utcnow() + timedelta(seconds=1)).isoformat()
+
+    def push(state: str, value: float, **extra) -> bool:
+        return coordinator.apply_ws_desired(
+            {
+                "sensorId": "dev1",
+                "dataPointId": "p-pump",
+                "desired": {"value": value, "state": state, "at": later, **extra},
+            }
+        )
+
+    assert push("PENDING", 1.0, label="On")
+    await hass.async_block_till_done()
+    pump = hass.states.get(pump_id)
+    assert pump.state == "on"
+    assert pump.attributes["write_state"] == "pending"
+    assert not push("PENDING", 1.0, label="On"), "the same state twice changes nothing"
+
+    assert push("CONFIRMED", 1.0, label="On")
+    await hass.async_block_till_done()
+    pump = hass.states.get(pump_id)
+    assert pump.state == "on", "a confirmed switch without its own report is the state"
+    assert pump.attributes["write_state"] == "confirmed"
+
+    assert push("PENDING", 0.0, label="Off")
+    assert push("FAILED", 0.0, label="Off", declineReason="NO_HANDLER")
+    await hass.async_block_till_done()
+    pump = hass.states.get(pump_id)
+    assert pump.state == "on", "a declined switch falls back"
+    assert pump.attributes["write_state"] == "failed"
+
+    # Broken pushes are dropped.
+    assert not coordinator.apply_ws_desired(
+        {"sensorId": "dev1", "dataPointId": "p-pump"}
+    )
+    assert not coordinator.apply_ws_desired(
+        {
+            "sensorId": "dev1",
+            "dataPointId": "p-pump",
+            "desired": {"state": "DONE", "at": later},
+        }
+    )
+    assert not coordinator.apply_ws_desired(
+        {
+            "sensorId": "dev1",
+            "dataPointId": "p-pump",
+            "desired": {"state": "PENDING", "at": "yesterday", "value": 1},
+        }
+    )
 
 
 async def test_older_server_keeps_the_old_world(hass, aioclient_mock):

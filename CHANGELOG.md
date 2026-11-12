@@ -2,6 +2,19 @@
 
 All notable changes to the HydroNode Home Assistant integration.
 
+## [0.6.1] - unreleased
+
+### Added
+
+- A switch, select or number follows its device at once: the WebSocket event `desired.updated` sets
+  `write_state` (`pending`, `confirmed`, `failed`) the moment the device confirms or declines, also for
+  changes made in the app or by an automation. A confirmed switch without its own state report shows
+  the new value right away. Before, the answer came with the next poll (up to 60 s).
+
+### Unchanged
+
+- Servers without the event behave as before; the 60 s polling stays.
+
 ## [0.6.0] - unreleased
 
 ### Added

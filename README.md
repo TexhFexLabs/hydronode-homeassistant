@@ -179,7 +179,9 @@ type. A server without it answers as before and nothing changes.
   (Edit, Manage or owner) and the integration uses a full-access token (`hat_…`). Read-only tokens
   (`hrt_…`) never switch anything.
 - A switch on a device shows the new state right away and the attribute `write_state` `pending` until the
-  device confirms it (`confirmed`) or declines it (`failed`, the switch falls back).
+  device confirms it (`confirmed`) or declines it (`failed`, the switch falls back). Since 0.6.1 the
+  answer arrives the moment HydroNode has it (WebSocket event `desired.updated`), also for switches made
+  in the app or by an automation; the 60 s polling stays as a fallback.
 - MQTT, push, virtual and external sensors are devices with the model *MQTT sensor*, *Push sensor*,
   *Virtual sensor* or *External data*.
 - A virtual sensor's references (a data point it shows from another sensor) are entities of their own

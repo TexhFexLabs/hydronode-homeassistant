@@ -175,6 +175,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: HydroNodeConfigEntry) ->
         if entry.options.get(CONF_FIRE_VALUE_EVENTS, False):
             hass.bus.async_fire(EVENT_VALUE_UPDATED, data)
 
+    def _handle_desired_updated(data: dict[str, Any]) -> None:
+        if _accept_event(data) is None:
+            return
+        coordinator.apply_ws_desired(data)
+
     def _handle_incident_updated(data: dict[str, Any]) -> None:
         station_id = _accept_event(data)
         if station_id is None:
@@ -225,6 +230,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: HydroNodeConfigEntry) ->
         on_value_updated=_handle_value_updated,
         on_incident_updated=_handle_incident_updated,
         on_analysis_completed=_handle_analysis_completed,
+        on_desired_updated=_handle_desired_updated,
         on_auth_failed=_handle_auth_failed,
         on_reconnect=_on_ws_reconnect,
         expected_user_id=entry.unique_id,
