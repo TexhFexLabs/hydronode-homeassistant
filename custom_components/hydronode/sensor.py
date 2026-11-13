@@ -16,7 +16,6 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
-from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
@@ -28,7 +27,6 @@ from .const import (
     DEFAULT_SCALE,
     DOMAIN,
     GENERIC_SENSOR_TYPE,
-    MANUFACTURER,
     SENSOR_TYPE_MAP,
     SENSOR_TYPE_NAMES,
     STALE_TIMEOUT_SECONDS,
@@ -54,6 +52,7 @@ from .insights import (
     HydroNodeInsightsStore,
     incident_summary,
     sensor_unique_id,
+    station_device_info,
     station_unique_id,
 )
 
@@ -234,11 +233,7 @@ class HydroNodeSensorEntity(CoordinatorEntity[HydroNodeCoordinator], SensorEntit
         if self._channel:
             self._attr_extra_state_attributes = {"channel_name": self._channel}
 
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, station["id"])},
-            name=station.get("name") or "HydroNode Station",
-            manufacturer=MANUFACTURER,
-        )
+        self._attr_device_info = station_device_info(station)
 
     @callback
     def _handle_coordinator_update(self) -> None:

@@ -88,13 +88,43 @@ def sensor_unique_id(station_id: str, sensor_id: str, key: str) -> str:
     return f"{station_id}_{sensor_id}_{key}"
 
 
+SOURCE_LABELS = {
+    "MQTT": "MQTT interface",
+    "PUSH": "JSON push interface",
+    "LORAWAN": "LoRaWAN interface",
+}
+
+
+def station_model(station: dict[str, Any]) -> str | None:
+    """Where a one-sensor device's values come from, e.g. "MQTT interface Home broker".
+
+    Only when the station holds exactly one sensor with a known source, so every entity of the
+    device reports the same model. The device name stays as it is.
+    """
+    sensors = station.get("sensors") or []
+    if len(sensors) != 1 or not isinstance(sensors[0], dict):
+        return None
+    source = sensors[0].get("source")
+    if not isinstance(source, dict):
+        return None
+    label = SOURCE_LABELS.get(source.get("kind"))
+    name = source.get("name")
+    if label is None or not isinstance(name, str) or not name.strip():
+        return None
+    return f"{label} {name.strip()[:60]}"
+
+
 def station_device_info(station: dict[str, Any]) -> DeviceInfo:
     """Same device as the measurement entities, so everything shares one device."""
-    return DeviceInfo(
+    info = DeviceInfo(
         identifiers={(DOMAIN, station["id"])},
         name=station.get("name") or "HydroNode Station",
         manufacturer=MANUFACTURER,
     )
+    model = station_model(station)
+    if model:
+        info["model"] = model
+    return info
 
 
 # --- normalization ----------------------------------------------------------------

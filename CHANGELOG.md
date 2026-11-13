@@ -2,6 +2,22 @@
 
 All notable changes to the HydroNode Home Assistant integration.
 
+## [0.6.2] - unreleased
+
+### Added
+
+- Interfaces: with `direction` from the server, the entity kind follows it. Data points HydroNode switches
+  (`BOTH`, `OUT`) become switch, select or number; data points that only come from the device (`IN`) or are made
+  in HydroNode (`LOCAL`) stay readings, even when marked writable. `OUT` without a reported state sets
+  `assumed_state`.
+- A device with one sensor shows the interface that feeds it as model, e.g. "MQTT interface Home broker". The
+  device name stays, so automations and entity IDs are unchanged.
+
+### Unchanged
+
+- Servers without `direction` decide from `writable` as before. Discovered devices and interfaces themselves are
+  not mirrored to Home Assistant.
+
 ## [0.6.1] - unreleased
 
 ### Added

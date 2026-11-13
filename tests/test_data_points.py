@@ -716,3 +716,42 @@ async def test_read_token_flow_says_read_only(hass, aioclient_mock):
         await hass.async_block_till_done()
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["data"][CONF_TOKEN] == READ_TOKEN
+
+
+async def test_direction_decides_the_entity_kind(hass, aioclient_mock):
+    """IF-07: with `direction`, BOTH/OUT are controls, IN never is; OUT assumes its state."""
+    now = dt_util.utcnow().isoformat()
+    bootstrap = data_bootstrap()
+    tank = bootstrap["stations"][0]["sensors"][0]
+    points = {p["id"]: p for p in tank["dataPoints"]}
+    points["p-temp"]["direction"] = "IN"
+    points["p-heater"]["direction"] = "BOTH"
+    points["p-pump"]["direction"] = "OUT"
+    # Writable on paper but coming from the device only: stays a reading.
+    points["p-setpoint"]["direction"] = "IN"
+    mock_api(aioclient_mock, bootstrap, data_states(now))
+    await setup_entry(hass)
+
+    assert entity_id(hass, "select", "dp_p-heater_write") is not None
+    pump = hass.states.get(entity_id(hass, "switch", "dp_p-pump_write"))
+    assert pump.attributes.get("assumed_state") is True
+    heater = hass.states.get(entity_id(hass, "select", "dp_p-heater_write"))
+    assert heater.attributes.get("assumed_state") is not True
+    # No control; a device number keeps only its old entity (as before).
+    assert entity_id(hass, "number", "dp_p-setpoint_write") is None
+
+
+async def test_source_interface_is_the_device_model(hass, aioclient_mock):
+    """IF-07: a one-sensor device shows its interface as model; the name stays."""
+    now = dt_util.utcnow().isoformat()
+    bootstrap = data_bootstrap()
+    field_station = bootstrap["stations"][1]
+    field_station["sensors"][0]["source"] = {"kind": "LORAWAN", "name": "TTN farm"}
+    mock_api(aioclient_mock, bootstrap, data_states(now))
+    await setup_entry(hass)
+
+    device = dr.async_get(hass).async_get_device(identifiers={(DOMAIN, "dev2")})
+    assert device.model == "LoRaWAN interface TTN farm"
+    assert device.name == "Field node"
+    greenhouse = dr.async_get(hass).async_get_device(identifiers={(DOMAIN, "st1")})
+    assert greenhouse.model is None

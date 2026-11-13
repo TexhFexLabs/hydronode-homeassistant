@@ -24,7 +24,6 @@ from typing import Any
 
 from homeassistant.core import callback
 from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
@@ -32,11 +31,10 @@ from homeassistant.util import dt as dt_util
 from .const import (
     CONF_INCLUDE_FOLLOWED,
     DEFAULT_INCLUDE_FOLLOWED,
-    DOMAIN,
     KIND_MODELS,
-    MANUFACTURER,
     STALE_TIMEOUT_SECONDS,
 )
+from .insights import station_device_info
 from .validation import normalize_point
 
 READ = "read"
@@ -105,9 +103,16 @@ def sensor_points(sensor: dict[str, Any]) -> list[dict[str, Any]]:
 def role_of(
     sensor: dict[str, Any], point: dict[str, Any], can_write: bool
 ) -> str | None:
-    """READ, CONTROL or None (a device number keeps only its old entity)."""
+    """READ, CONTROL or None (a device number keeps only its old entity).
+
+    With ``direction`` (servers with interfaces) it alone decides: BOTH and OUT are switched by
+    HydroNode, IN and LOCAL never are. Without it, as before, from ``writable``.
+    """
+    direction = point.get("direction")
+    controllable = direction in ("BOTH", "OUT") if direction else point["writable"]
     if (
         can_write
+        and controllable
         and point["writable"]
         and point["can_write"]
         and (CONTROL, point["value_type"]) in PLATFORMS
@@ -224,11 +229,9 @@ class HydroNodePointEntity(CoordinatorEntity):
         if station["id"] != sensor["id"] and sensor.get("name"):
             name = f"{sensor['name']} {name}"
         self._attr_name = name
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, station["id"])},
-            name=station.get("name") or "HydroNode Station",
-            manufacturer=MANUFACTURER,
-        )
+        self._attr_device_info = station_device_info(station)
+        # OUT: HydroNode switches it, the device reports no state of its own.
+        self._attr_assumed_state = point.get("direction") == "OUT"
         attributes: dict[str, Any] = {"data_point_id": self._point_id}
         if point["channel"]:
             attributes["channel_name"] = point["channel"]
