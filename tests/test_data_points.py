@@ -348,9 +348,9 @@ async def test_value_types_and_kinds(hass, aioclient_mock):
     mock_api(aioclient_mock, data_bootstrap(), data_states(now))
     await setup_entry(hass)
 
-    # MQTT sensor: device with a model, no old-style entity.
+    # A sensor fed via MQTT without a named interface: device with the kind as model, no old-style entity.
     device = dr.async_get(hass).async_get_device(identifiers={(DOMAIN, "plug")})
-    assert device.model == "MQTT sensor"
+    assert device.model == "Via MQTT"
     assert entity_id(hass, "sensor", "plug_POWER_power") is None
     # Devices keep their device entry without a model.
     tank = dr.async_get(hass).async_get_device(identifiers={(DOMAIN, "st1")})
@@ -755,3 +755,23 @@ async def test_source_interface_is_the_device_model(hass, aioclient_mock):
     assert device.name == "Field node"
     greenhouse = dr.async_get(hass).async_get_device(identifiers={(DOMAIN, "st1")})
     assert greenhouse.model is None
+
+
+def test_one_device_model_rule():
+    """Registry and entities use the same rule: interface first, then the kind, else none."""
+    from custom_components.hydronode.insights import station_model
+
+    one = {
+        "sensors": [{"kind": "MQTT", "source": {"kind": "MQTT", "name": "Home broker"}}]
+    }
+    assert station_model(one) == "MQTT interface Home broker"
+    assert station_model({"sensors": [{"kind": "MQTT"}]}) == "Via MQTT"
+    assert (
+        station_model({"sensors": [{"kind": "PUSH"}, {"kind": "PUSH"}]})
+        == "Via JSON push"
+    )
+    assert station_model({"sensors": [{"kind": "VIRTUAL"}]}) == "Virtual sensor"
+    # Classic devices and mixed stations keep no model.
+    assert station_model({"sensors": [{"kind": "DEVICE"}]}) is None
+    assert station_model({"sensors": [{}]}) is None
+    assert station_model({"sensors": [{"kind": "MQTT"}, {"kind": "DEVICE"}]}) is None

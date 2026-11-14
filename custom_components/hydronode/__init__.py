@@ -35,7 +35,8 @@ from .const import (
     MANUFACTURER,
 )
 from .coordinator import HydroNodeCoordinator, build_unique_id
-from .data_points import iter_points, legacy_types, station_model
+from .data_points import iter_points, legacy_types
+from .insights import station_model
 from .insights import (
     EVENT_ANALYSIS_READY,
     MAX_INCIDENTS_PER_STATION,
@@ -298,7 +299,7 @@ def _async_sync_registries(
         device_info: dict[str, Any] = {}
         model = station_model(station)
         if model is not None:
-            # MQTT, push, virtual and external sources read as what they are.
+            # One rule for the registry and every entity (insights.station_model).
             device_info["model"] = model
         device_registry.async_get_or_create(
             config_entry_id=entry.entry_id,

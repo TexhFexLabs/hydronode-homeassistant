@@ -13,6 +13,12 @@ All notable changes to the HydroNode Home Assistant integration.
 - A device with one sensor shows the interface that feeds it as model, e.g. "MQTT interface Home broker". The
   device name stays, so automations and entity IDs are unchanged.
 
+### Changed
+
+- One rule for the device model, the same for the device entry and every entity: the interface that feeds a
+  one-sensor device, otherwise the kind ("Via MQTT", "Via JSON push", "Virtual sensor", "External data"). Before,
+  the device entry said "MQTT sensor" while its entities named the interface.
+
 ### Unchanged
 
 - Servers without `direction` decide from `writable` as before. Discovered devices and interfaces themselves are

@@ -192,8 +192,8 @@ directions decides from "writable" as before.
   in the app or by an automation; the 60 s polling stays as a fallback.
 - A device with one sensor shows the interface that feeds it as its model, for example
   *MQTT interface Home broker*, *JSON push interface Weather* or *LoRaWAN interface TTN*. Without that, MQTT, push,
-  virtual and external sensors show *MQTT sensor*, *Push sensor*, *Virtual sensor* or *External data*. The device
-  name stays, so automations and entity IDs are unchanged. Interfaces and discovered devices themselves are not mirrored to
+  virtual and external sensors show *Via MQTT*, *Via JSON push*, *Virtual sensor* or *External data*. The device entry
+  and all its entities use this one rule. The device name stays, so automations and entity IDs are unchanged. Interfaces and discovered devices themselves are not mirrored to
   Home Assistant.
 - A virtual sensor's references (a data point it shows from another sensor) are entities of their own
   on the virtual sensor (`dp_{reference}`, attribute `reference_of` = the source data point), read only.

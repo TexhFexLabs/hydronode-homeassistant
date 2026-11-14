@@ -31,7 +31,6 @@ from homeassistant.util import dt as dt_util
 from .const import (
     CONF_INCLUDE_FOLLOWED,
     DEFAULT_INCLUDE_FOLLOWED,
-    KIND_MODELS,
     STALE_TIMEOUT_SECONDS,
 )
 from .insights import station_device_info
@@ -153,14 +152,6 @@ def point_index(bootstrap: dict[str, Any]) -> dict[tuple, dict[str, Any]]:
                 if point["type"] is not None:
                     index[(sensor["id"], point["type"], point["channel"])] = point
     return index
-
-
-def station_model(station: dict[str, Any]) -> str | None:
-    """Device model for stations made only of non-device sensors."""
-    kinds = {sensor_kind(sensor) for sensor in station.get("sensors", [])}
-    if len(kinds) == 1:
-        return KIND_MODELS.get(kinds.pop())
-    return None
 
 
 def setup_point_platform(

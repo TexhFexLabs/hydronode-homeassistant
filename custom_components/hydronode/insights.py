@@ -22,7 +22,7 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import Entity
 from homeassistant.util import dt as dt_util
 
-from .const import DOMAIN, MANUFACTURER
+from .const import KIND_MODELS, DOMAIN, MANUFACTURER
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -96,22 +96,26 @@ SOURCE_LABELS = {
 
 
 def station_model(station: dict[str, Any]) -> str | None:
-    """Where a one-sensor device's values come from, e.g. "MQTT interface Home broker".
+    """The one device model of a station, used by the device registry and every entity alike.
 
-    Only when the station holds exactly one sensor with a known source, so every entity of the
-    device reports the same model. The device name stays as it is.
+    1. One sensor with a known source interface: "MQTT interface Home broker".
+    2. Otherwise all sensors of one non-device kind: "Via MQTT", "Virtual sensor" (KIND_MODELS).
+    3. Otherwise none (classic devices, mixed stations). The device name stays as it is.
     """
-    sensors = station.get("sensors") or []
-    if len(sensors) != 1 or not isinstance(sensors[0], dict):
-        return None
-    source = sensors[0].get("source")
-    if not isinstance(source, dict):
-        return None
-    label = SOURCE_LABELS.get(source.get("kind"))
-    name = source.get("name")
-    if label is None or not isinstance(name, str) or not name.strip():
-        return None
-    return f"{label} {name.strip()[:60]}"
+    sensors = [s for s in station.get("sensors") or [] if isinstance(s, dict)]
+    if len(sensors) == 1:
+        source = sensors[0].get("source")
+        if isinstance(source, dict):
+            label = SOURCE_LABELS.get(source.get("kind"))
+            name = source.get("name")
+            if label is not None and isinstance(name, str) and name.strip():
+                return f"{label} {name.strip()[:60]}"
+    kinds = {
+        s.get("kind") if isinstance(s.get("kind"), str) else "DEVICE" for s in sensors
+    }
+    if len(kinds) == 1:
+        return KIND_MODELS.get(kinds.pop())
+    return None
 
 
 def station_device_info(station: dict[str, Any]) -> DeviceInfo:

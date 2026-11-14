@@ -58,9 +58,11 @@ FULL_TOKEN_PREFIX = "hat_"
 # Read tokens (hrt_) read everything Home Assistant shows, but never switch anything.
 READ_TOKEN_PREFIX = "hrt_"
 # Device model shown for sensors that are not HydroNode devices.
+# Device model when no interface names the source (several sensors, older server). Same words as the web:
+# there is no "MQTT sensor" any more, a sensor gets its values via MQTT.
 KIND_MODELS = {
-    "MQTT": "MQTT sensor",
-    "PUSH": "Push sensor",
+    "MQTT": "Via MQTT",
+    "PUSH": "Via JSON push",
     "VIRTUAL": "Virtual sensor",
     "EXTERNAL": "External data",
 }
