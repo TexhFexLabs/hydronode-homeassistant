@@ -775,3 +775,29 @@ def test_one_device_model_rule():
     assert station_model({"sensors": [{"kind": "DEVICE"}]}) is None
     assert station_model({"sensors": [{}]}) is None
     assert station_model({"sensors": [{"kind": "MQTT"}, {"kind": "DEVICE"}]}) is None
+
+
+async def test_number_control_remains_available_when_stale(hass, aioclient_mock):
+    """Writable number controls stay available even if their last timestamp is stale."""
+    stale = (dt_util.utcnow() - timedelta(hours=2)).isoformat()
+    states = data_states(stale) + [
+        {
+            "sensorId": "dev1",
+            "type": "CUSTOM",
+            "channelName": "setpoint",
+            "value": 21.0,
+            "timestamp": stale,
+            "dataPointId": "p-setpoint",
+        }
+    ]
+    mock_api(aioclient_mock, data_bootstrap(), states)
+    await setup_entry(hass)
+
+    setpoint = hass.states.get(entity_id(hass, "number", "dp_p-setpoint_write"))
+    assert setpoint is not None
+    assert setpoint.state == "21.0"
+
+    # Read-only NUMBER entities with a stale timestamp still become unavailable.
+    power = hass.states.get(entity_id(hass, "sensor", "dp_p-power"))
+    assert power is not None
+    assert power.state == "unavailable"

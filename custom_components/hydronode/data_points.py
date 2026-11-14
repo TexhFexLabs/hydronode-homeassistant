@@ -249,9 +249,11 @@ class HydroNodePointEntity(CoordinatorEntity):
         if not self.coordinator.sensor_active.get(self._sensor_id, self._sensor_active):
             return False
         row = self._row
+        if self._attr_unique_id == control_unique_id(self._point_id):
+            # Controls remain writable even without a value yet or with an old reading.
+            return True
         if row is None:
-            # A switch without any value yet can still be switched.
-            return self._attr_unique_id == control_unique_id(self._point_id)
+            return False
         if self._point["value_type"] != "NUMBER":
             # On/off, choices and texts report on change only: never stale.
             return True
