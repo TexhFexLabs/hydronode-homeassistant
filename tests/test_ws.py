@@ -127,7 +127,7 @@ async def test_connect_once_sends_auth_and_dispatches_value_update(hass):
     with pytest.raises(HydroNodeWsError):
         await client._connect_once()
 
-    assert ws.sent == [{"type": "auth", "token": "hat_test"}]
+    assert ws.sent == [{"type": "auth", "token": "hat_test", "caps": ["data1"]}]
     assert received["value"] == value_data
 
 
@@ -152,6 +152,20 @@ async def test_dispatch_routes_all_message_types(hass):
     assert seen["value"] == {"sensorId": "s1"}
     assert seen["incident"] == {"incidentId": "i1"}
     assert seen["analysis"] == {"analysisId": "a1", "source": "LLM"}
+
+
+async def test_dispatch_routes_desired_updated(hass):
+    """desired.updated reaches its callback; a client without one ignores it."""
+    seen: list[dict] = []
+    client = _make_client(
+        FakeSession(FakeWebSocket([])), hass=hass, on_desired_updated=seen.append
+    )
+    payload = {"sensorId": "s1", "dataPointId": "p1", "desired": {"state": "CONFIRMED"}}
+    client._dispatch(_envelope("desired.updated", payload))
+    assert seen == [payload]
+    _make_client(FakeSession(FakeWebSocket([])), hass=hass)._dispatch(
+        _envelope("desired.updated", payload)
+    )
 
 
 async def test_dispatch_ignores_non_json_payload(hass):

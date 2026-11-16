@@ -46,6 +46,26 @@ DEFAULT_FIRE_VALUE_EVENTS = False
 BOOTSTRAP_PATH = "/api/ha/v1/bootstrap"
 STATES_PATH = "/api/ha/v1/states"
 INSIGHTS_PATH = "/api/ha/v1/insights"
+POINT_VALUE_PATH = "/api/data/v1/points/{point_id}/value"
+
+# --- Data platform -------------------------------------------------------------
+# Sent with every request (and as `caps` in the WS auth). A server that knows the
+# data platform then adds sensor kinds and data points; an older one ignores it.
+CAPABILITIES_HEADER = "X-HydroNode-Capabilities"
+CAPABILITIES = "data1"
+# Only full-access tokens may write; read tokens (hrt_) never get controls.
+FULL_TOKEN_PREFIX = "hat_"
+# Read tokens (hrt_) read everything Home Assistant shows, but never switch anything.
+READ_TOKEN_PREFIX = "hrt_"
+# Device model shown for sensors that are not HydroNode devices.
+# Device model when no interface names the source (several sensors, older server). Same words as the web:
+# there is no "MQTT sensor" any more, a sensor gets its values via MQTT.
+KIND_MODELS = {
+    "MQTT": "Via MQTT",
+    "PUSH": "Via JSON push",
+    "VIRTUAL": "Virtual sensor",
+    "EXTERNAL": "External data",
+}
 BOOTSTRAP_REFRESH_INTERVAL = 5 * 60  # seconds — auto-discovery per design doc §6
 
 # --- WebSocket -----------------------------------------------------------------
@@ -58,9 +78,12 @@ WS_CLOSE_SESSION_LIMIT = 4429
 
 MSG_TYPE_AUTH = "auth"
 MSG_TYPE_AUTH_OK = "auth_ok"
+WS_CAPS = [CAPABILITIES]
 EVENT_TYPE_VALUE_UPDATED = "value.updated"
 EVENT_TYPE_INCIDENT_UPDATED = "incident.updated"
 EVENT_TYPE_ANALYSIS_COMPLETED = "analysis.completed"
+# Data platform servers only: the desired state of a writable data point changed.
+EVENT_TYPE_DESIRED_UPDATED = "desired.updated"
 
 # --- HA event-bus event names ---------------------------------------------------
 EVENT_INCIDENT = "hydronode_incident"

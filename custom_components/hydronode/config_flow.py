@@ -40,6 +40,7 @@ from .const import (
     DEFAULT_POLL_INTERVAL,
     DOMAIN,
     MIN_POLL_INTERVAL,
+    READ_TOKEN_PREFIX,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -80,6 +81,7 @@ class HydroNodeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     def __init__(self) -> None:
         self._reauth_entry: config_entries.ConfigEntry | None = None
+        self._read_only_entry: dict[str, Any] | None = None
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -105,14 +107,30 @@ class HydroNodeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             else:
                 await self.async_set_unique_id(user["id"])
                 self._abort_if_unique_id_configured()
-                return self.async_create_entry(
-                    title=user.get("displayName") or "HydroNode",
-                    data={CONF_BASE_URL: base_url, CONF_TOKEN: token},
-                )
+                entry = {
+                    "title": user.get("displayName") or "HydroNode",
+                    "data": {CONF_BASE_URL: base_url, CONF_TOKEN: token},
+                }
+                if token.startswith(READ_TOKEN_PREFIX):
+                    # Works, but only reads: say so before the entry exists.
+                    self._read_only_entry = entry
+                    return await self.async_step_read_only()
+                return self.async_create_entry(**entry)
 
         return self.async_show_form(
             step_id="user", data_schema=STEP_USER_DATA_SCHEMA, errors=errors
         )
+
+    async def async_step_read_only(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """A read token (hrt_): sensors, choices and texts, but no switches."""
+        entry = self._read_only_entry
+        if entry is None:
+            return self.async_abort(reason="unknown")
+        if user_input is not None:
+            return self.async_create_entry(**entry)
+        return self.async_show_form(step_id="read_only", data_schema=vol.Schema({}))
 
     async def async_step_reauth(self, entry_data: dict[str, Any]) -> FlowResult:
         """Start a reauth flow after the token was revoked/rejected (401)."""

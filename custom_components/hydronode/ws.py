@@ -15,10 +15,12 @@ from homeassistant.core import HomeAssistant
 from .api import HydroNodeAuthError, normalize_base_url
 from .const import (
     EVENT_TYPE_ANALYSIS_COMPLETED,
+    EVENT_TYPE_DESIRED_UPDATED,
     EVENT_TYPE_INCIDENT_UPDATED,
     EVENT_TYPE_VALUE_UPDATED,
     MSG_TYPE_AUTH,
     MSG_TYPE_AUTH_OK,
+    WS_CAPS,
     WS_AUTH_TIMEOUT,
     WS_CLOSE_AUTH_FAILED,
     WS_CLOSE_SESSION_LIMIT,
@@ -71,6 +73,7 @@ class HydroNodeWebSocketClient:
         on_auth_failed: VoidCallback,
         on_reconnect: ReconnectCallback | None = None,
         expected_user_id: str | None = None,
+        on_desired_updated: DataCallback | None = None,
     ) -> None:
         self._hass = hass
         self._session = session
@@ -79,6 +82,7 @@ class HydroNodeWebSocketClient:
         self._on_value_updated = on_value_updated
         self._on_incident_updated = on_incident_updated
         self._on_analysis_completed = on_analysis_completed
+        self._on_desired_updated = on_desired_updated
         self._on_auth_failed = on_auth_failed
         self._on_reconnect = on_reconnect
         self._task: asyncio.Task | None = None
@@ -136,7 +140,9 @@ class HydroNodeWebSocketClient:
         async with self._session.ws_connect(
             self._ws_url, heartbeat=30, max_msg_size=1024 * 1024
         ) as ws:
-            await ws.send_json({"type": MSG_TYPE_AUTH, "token": self._token})
+            await ws.send_json(
+                {"type": MSG_TYPE_AUTH, "token": self._token, "caps": WS_CAPS}
+            )
 
             try:
                 auth_msg = await asyncio.wait_for(ws.receive(), timeout=WS_AUTH_TIMEOUT)
@@ -201,6 +207,7 @@ class HydroNodeWebSocketClient:
                 EVENT_TYPE_VALUE_UPDATED: self._on_value_updated,
                 EVENT_TYPE_INCIDENT_UPDATED: self._on_incident_updated,
                 EVENT_TYPE_ANALYSIS_COMPLETED: self._on_analysis_completed,
+                EVENT_TYPE_DESIRED_UPDATED: self._on_desired_updated,
             }.get(msg_type)
             if isinstance(msg_type, str)
             else None

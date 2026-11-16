@@ -68,6 +68,11 @@ regular account password. You create one in the HydroNode web app:
 4. **Copy the token immediately** — it is shown exactly once and cannot be retrieved again
    (only revoked and replaced). Paste it into the integration setup below.
 
+A **read-only token** (`hrt_…`, "Read only" in the same list) works too: Home Assistant then shows
+every sensor, on/off state, choice and text, but creates no switches, selects or numbers. The setup
+says so before it finishes. This needs a HydroNode server with the data platform; older servers
+refuse read-only tokens here.
+
 Tokens can be revoked any time from the same **Profile → API Tokens** page, e.g. after
 removing the integration. Tokens are only created from an active web/app session (never from
 another PAT), so a leaked token can't mint further tokens.
@@ -151,6 +156,49 @@ An entity becomes `unavailable` when its sensor is inactive on HydroNode, or whe
 value is older than **2 hours**. The window is deliberately generous: channels that are only
 included in every Nth uplink (e.g. particulate matter) keep showing their last value instead of
 flapping to `unavailable`, and history graphs stay connected.
+
+### Data points and interfaces (0.6.2, next release)
+
+0.6.2 is the next release; the newest tag is v0.5.0 until then. From 0.6.0 on the integration sends
+`X-HydroNode-Capabilities: data1`. A HydroNode server with the data
+platform then also lists MQTT, push, virtual and external sensors and every data point with its value
+type. A server without it answers as before and nothing changes.
+
+| Data point | Entity | Unique ID | State |
+|---|---|---|---|
+| Number (MQTT, push, virtual, external) | `sensor` | `dp_{data point}` | the number, unit and decimals from HydroNode |
+| On/off | `binary_sensor` | `dp_{data point}` | `on`/`off`, attribute `label` (for example `Open`, `Wet`) |
+| Choice | `sensor` (`enum`) | `dp_{data point}` | the label of the current option |
+| Text | `sensor` | `dp_{data point}` | the text (up to 255 characters) |
+| On/off HydroNode switches | `switch` | `dp_{data point}_write` | switches the data point |
+| Choice HydroNode switches | `select` | `dp_{data point}_write` | picks an option |
+| Number HydroNode sets | `number` | `dp_{data point}_write` | sets the number within its limits |
+
+**Which data points become controls.** Every data point carries a direction from HydroNode: `BOTH` (comes from
+the device and HydroNode can switch it, through a command or an MQTT publish), `OUT` (HydroNode only switches it),
+`IN` (only comes from the device: HTTP, LoRaWAN, MQTT, JSON push, external data) and `LOCAL` (made in HydroNode:
+manual, computed, references). `BOTH` and `OUT` become a switch, select or number; `IN` and `LOCAL` stay readings,
+even when marked writable. An `OUT` switch has no reported state and sets `assumed_state`. A server without
+directions decides from "writable" as before.
+
+- Device sensors keep all their entities with the same IDs. A device value you read as on/off or as a
+  choice in HydroNode gets an extra entity next to its number.
+- A data point becomes a control only when it is writable in HydroNode, your share allows changes
+  (Edit, Manage or owner) and the integration uses a full-access token (`hat_…`). Read-only tokens
+  (`hrt_…`) never switch anything.
+- A switch on a device shows the new state right away and the attribute `write_state` `pending` until the
+  device confirms it (`confirmed`) or declines it (`failed`, the switch falls back). Since 0.6.1 the
+  answer arrives the moment HydroNode has it (WebSocket event `desired.updated`), also for switches made
+  in the app or by an automation; the 60 s polling stays as a fallback.
+- A device with one sensor shows the interface that feeds it as its model, for example
+  *MQTT interface Home broker*, *JSON push interface Weather* or *LoRaWAN interface TTN*. Without that, MQTT, push,
+  virtual and external sensors show *Via MQTT*, *Via JSON push*, *Virtual sensor* or *External data*. The device entry
+  and all its entities use this one rule. The device name stays, so automations and entity IDs are unchanged. Interfaces and discovered devices themselves are not mirrored to
+  Home Assistant.
+- A virtual sensor's references (a data point it shows from another sensor) are entities of their own
+  on the virtual sensor (`dp_{reference}`, attribute `reference_of` = the source data point), read only.
+- Every data point updates live over the WebSocket, also MQTT, push, virtual and external ones, texts
+  and references. Without a WebSocket the 60 s polling catches up.
 
 Entity names are just the measurement title (the LoRaWAN channel name if configured, otherwise
 the prettified type, e.g. `Battery_Voltage` or `Water Temperature`). The station device supplies

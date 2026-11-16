@@ -35,6 +35,8 @@ from .const import (
     MANUFACTURER,
 )
 from .coordinator import HydroNodeCoordinator, build_unique_id
+from .data_points import iter_points, legacy_types
+from .insights import station_model
 from .insights import (
     EVENT_ANALYSIS_READY,
     MAX_INCIDENTS_PER_STATION,
@@ -52,7 +54,14 @@ from .ws import HydroNodeWebSocketClient
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.BINARY_SENSOR, Platform.EVENT]
+PLATFORMS: list[Platform] = [
+    Platform.SENSOR,
+    Platform.BINARY_SENSOR,
+    Platform.EVENT,
+    Platform.SWITCH,
+    Platform.SELECT,
+    Platform.NUMBER,
+]
 
 # Callback used by event.py entities: (station_id, event_type, attributes) -> None
 EventListener = Callable[[str, str, dict[str, Any]], None]
@@ -91,10 +100,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: HydroNodeConfigEntry) ->
 
     await coordinator.async_config_entry_first_refresh()
 
-    _async_sync_registries(hass, entry, coordinator.bootstrap)
+    _async_sync_registries(hass, entry, coordinator.bootstrap, client.can_write)
     entry.async_on_unload(
         coordinator.add_new_entity_listener(
-            lambda bootstrap: _async_sync_registries(hass, entry, bootstrap)
+            lambda bootstrap: _async_sync_registries(
+                hass, entry, bootstrap, client.can_write
+            )
         )
     )
 
@@ -165,6 +176,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: HydroNodeConfigEntry) ->
         if entry.options.get(CONF_FIRE_VALUE_EVENTS, False):
             hass.bus.async_fire(EVENT_VALUE_UPDATED, data)
 
+    def _handle_desired_updated(data: dict[str, Any]) -> None:
+        if _accept_event(data) is None:
+            return
+        coordinator.apply_ws_desired(data)
+
     def _handle_incident_updated(data: dict[str, Any]) -> None:
         station_id = _accept_event(data)
         if station_id is None:
@@ -215,6 +231,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: HydroNodeConfigEntry) ->
         on_value_updated=_handle_value_updated,
         on_incident_updated=_handle_incident_updated,
         on_analysis_completed=_handle_analysis_completed,
+        on_desired_updated=_handle_desired_updated,
         on_auth_failed=_handle_auth_failed,
         on_reconnect=_on_ws_reconnect,
         expected_user_id=entry.unique_id,
@@ -237,7 +254,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: HydroNodeConfigEntry) ->
 
 
 def _async_sync_registries(
-    hass: HomeAssistant, entry: HydroNodeConfigEntry, bootstrap: dict[str, Any]
+    hass: HomeAssistant,
+    entry: HydroNodeConfigEntry,
+    bootstrap: dict[str, Any],
+    can_write: bool = False,
 ) -> None:
     """Mirror the bootstrap into the HA registries.
 
@@ -253,7 +273,11 @@ def _async_sync_registries(
 
     valid_station_ids: set[str] = set()
     valid_unique_ids: set[str] = set()
-    for station in HydroNodeCoordinator.filter_stations(bootstrap, include_followed):
+    stations = HydroNodeCoordinator.filter_stations(bootstrap, include_followed)
+    valid_unique_ids.update(
+        unique_id for *_, unique_id in iter_points(stations, can_write)
+    )
+    for station in stations:
         station_id = station["id"]
         valid_station_ids.add(station_id)
         # Old V1 analysis entities ({station}_analysis_{key}) are not listed
@@ -266,17 +290,23 @@ def _async_sync_registries(
                 sensor_unique_id(station_id, sensor["id"], key)
                 for key in SENSOR_ENTITY_KEYS
             )
-            for type_info in sensor.get("types", []):
+            for type_info in legacy_types(sensor):
                 valid_unique_ids.add(
                     build_unique_id(
                         sensor["id"], type_info["type"], type_info.get("channelName")
                     )
                 )
+        device_info: dict[str, Any] = {}
+        model = station_model(station)
+        if model is not None:
+            # One rule for the registry and every entity (insights.station_model).
+            device_info["model"] = model
         device_registry.async_get_or_create(
             config_entry_id=entry.entry_id,
             identifiers={(DOMAIN, station_id)},
             name=station.get("name") or "HydroNode Station",
             manufacturer=MANUFACTURER,
+            **device_info,
         )
 
     for entity_entry in er.async_entries_for_config_entry(

@@ -11,8 +11,16 @@ from yarl import URL
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 
-from .const import BOOTSTRAP_PATH, INSIGHTS_PATH, STATES_PATH
-from .validation import valid_bootstrap, valid_state
+from .const import (
+    BOOTSTRAP_PATH,
+    CAPABILITIES,
+    CAPABILITIES_HEADER,
+    FULL_TOKEN_PREFIX,
+    INSIGHTS_PATH,
+    POINT_VALUE_PATH,
+    STATES_PATH,
+)
+from .validation import nonempty_string, valid_bootstrap, valid_point_state, valid_state
 
 REQUEST_TIMEOUT = aiohttp.ClientTimeout(total=30, connect=10)
 MAX_RESPONSE_BYTES = 8 * 1024 * 1024
@@ -36,6 +44,15 @@ class HydroNodeConnectionError(HydroNodeApiError):
 
 class HydroNodeInvalidUrl(HydroNodeApiError):
     """Invalid or unsafe base URL."""
+
+
+class HydroNodeWriteError(HydroNodeApiError):
+    """The server refused a write; `code` is its error code (never the body)."""
+
+    def __init__(self, status: int, code: str | None) -> None:
+        super().__init__(f"Write refused: {status} {code or ''}".strip())
+        self.status = status
+        self.code = code
 
 
 def normalize_base_url(base_url: str) -> str:
@@ -104,6 +121,11 @@ class HydroNodeApiClient:
     def base_url(self) -> str:
         return self._base_url
 
+    @property
+    def can_write(self) -> bool:
+        """Only full-access tokens (hat_) switch anything; hrt_ stays read only."""
+        return self._token.startswith(FULL_TOKEN_PREFIX)
+
     async def bootstrap(self) -> dict[str, Any]:
         result = await self._get(BOOTSTRAP_PATH)
         if not valid_bootstrap(result):
@@ -112,11 +134,70 @@ class HydroNodeApiClient:
 
     async def states(self) -> list[dict[str, Any]]:
         result = await self._get(STATES_PATH)
-        if not isinstance(result, list) or not all(
-            valid_state(state) for state in result
-        ):
+        if not isinstance(result, list):
             raise HydroNodeApiError("Invalid states response")
-        return result
+        # Data point rows (data platform) are checked one by one: a bad one is
+        # dropped instead of failing the whole poll. Old rows stay strict.
+        states = [
+            state
+            for state in result
+            if not (isinstance(state, dict) and "dataPointId" in state)
+            or valid_point_state(state)
+        ]
+        if not all(valid_state(state) for state in states):
+            raise HydroNodeApiError("Invalid states response")
+        return states
+
+    async def write_value(self, point_id: str, value: float) -> dict[str, Any]:
+        """Set a writable data point (`PUT /api/data/v1/points/{id}/value`).
+
+        Returns the data point object of the answer. Refusals raise
+        HydroNodeWriteError with the server's error code.
+        """
+        if not self.can_write:
+            raise HydroNodeWriteError(403, "READ_TOKEN_SCOPE")
+        if not nonempty_string(point_id) or "/" in point_id or "?" in point_id:
+            raise HydroNodeApiError("Invalid data point id")
+        path = POINT_VALUE_PATH.format(point_id=point_id)
+        try:
+            async with self._session.put(
+                f"{self._base_url}{path}",
+                headers=self._headers(),
+                json={"value": value},
+                timeout=REQUEST_TIMEOUT,
+                allow_redirects=False,
+            ) as response:
+                body = await self._read_json(response, path)
+                if response.status in (200, 202):
+                    return body if isinstance(body, dict) else {}
+                if response.status == 401:
+                    raise HydroNodeAuthError("HydroNode token rejected")
+                code = body.get("error") if isinstance(body, dict) else None
+                raise HydroNodeWriteError(
+                    response.status, code if isinstance(code, str) else None
+                )
+        except (aiohttp.ClientError, TimeoutError) as err:
+            raise HydroNodeConnectionError(f"Connection failed for {path}") from err
+
+    def _headers(self) -> dict[str, str]:
+        return {
+            "Authorization": f"Bearer {self._token}",
+            CAPABILITIES_HEADER: CAPABILITIES,
+        }
+
+    @staticmethod
+    async def _read_json(response: aiohttp.ClientResponse, path: str) -> Any:
+        body = bytearray()
+        async for chunk in response.content.iter_chunked(64 * 1024):
+            body.extend(chunk)
+            if len(body) > MAX_RESPONSE_BYTES:
+                raise HydroNodeApiError("HydroNode response exceeds size limit")
+        if not body:
+            return None
+        try:
+            return json.loads(body)
+        except (ValueError, UnicodeError, RecursionError) as err:
+            raise HydroNodeApiError(f"Invalid JSON response for {path}") from err
 
     async def insights(self) -> dict[str, Any] | None:
         """Open incidents and newest analyses per station.
@@ -133,11 +214,10 @@ class HydroNodeApiClient:
         return result
 
     async def _get(self, path: str) -> Any:
-        headers = {"Authorization": f"Bearer {self._token}"}
         try:
             async with self._session.get(
                 f"{self._base_url}{path}",
-                headers=headers,
+                headers=self._headers(),
                 timeout=REQUEST_TIMEOUT,
                 allow_redirects=False,
             ) as response:
